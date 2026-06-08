@@ -1,0 +1,12 @@
+{
+  "bare_repo_path": "",
+  "work_repo_path": "",
+  "enable_lfs": false,
+  "git_exe_path": "",
+  "theme": "light",
+  "language": "zh-Hans",
+  "gitignore_template": "no_template",
+  "gitattributes_template": "no_template",
+  "default_window_size": "900x600",
+  "min_window_size": "800x500"
+}
