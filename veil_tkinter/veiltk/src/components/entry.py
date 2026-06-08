@@ -3,13 +3,13 @@ import enum
 from ..core.view import View
 from ..core.manager.ui_style_manager import UIStyleManager, StyleObject
 from ..core.manager.event_manager import Event
-from ..core.manager.localization_manager import LocalizedText
+from ..core.manager.localization_manager import LocalizedText, LocalizationManager
 
-class EntryFuncState(enum.Enum):
+class EntryMode(enum.Enum):
     Normal = "normal"
     Readonly = "readonly"
-    SimulateDisable = "simulate_disable"
     Disable = "disable"
+    AllDisable = "all_disable"
 
 class EntryInteractionState(enum.Enum):
     Idle = "none"
@@ -27,12 +27,13 @@ class Entry(View):
         self._tk_frame = None
         self._tk_entry = None
         self._styles = None
-        self._func_state = EntryFuncState.Normal
+        self._entry_mode = EntryMode.Normal
         self._interaction_state = EntryInteractionState.Idle
         self._is_global_click_bound = False
         self._global_click_id = None
         self._override_state_config = {}
         self._internal_bind_ids = []
+        self.lm = LocalizationManager.get_instance()
 
         self.on_focus_in = Event()
         self.on_focus_out = Event()
@@ -133,17 +134,17 @@ class Entry(View):
         takefocus_val = 1
         cursor = None
 
-        if self._func_state in self._override_state_config:
-            config = self._override_state_config[self._func_state]
+        if self._entry_mode in self._override_state_config:
+            config = self._override_state_config[self._entry_mode]
             cursor = config.get('cursor')
             if 'takefocus' in config:
                 takefocus_val = config['takefocus']
 
-            if self._func_state == EntryFuncState.Disable:
+            if self._entry_mode == EntryMode.AllDisable:
                 entry_state, style, takefocus_val = 'disabled', self._styles.disable, 0
-            elif self._func_state == EntryFuncState.SimulateDisable:
+            elif self._entry_mode == EntryMode.Disable:
                 entry_state, style, takefocus_val = 'readonly', self._styles.disable, 0
-            elif self._func_state == EntryFuncState.Readonly:
+            elif self._entry_mode == EntryMode.Readonly:
                 entry_state = 'readonly'
                 if self._interaction_state == EntryInteractionState.Focus: style = self._styles.focus
                 elif self._interaction_state == EntryInteractionState.Hover: style = self._styles.hover
@@ -155,11 +156,11 @@ class Entry(View):
                 elif self._interaction_state == EntryInteractionState.Hover: style = self._styles.hover
                 elif self._interaction_state == EntryInteractionState.Active: style = self._styles.active
                 else: style = self._styles.normal
-        elif self._func_state == EntryFuncState.Disable:
+        elif self._entry_mode == EntryMode.AllDisable:
             cursor, entry_state, style, takefocus_val = 'no', 'disabled', self._styles.disable, 0
-        elif self._func_state == EntryFuncState.SimulateDisable:
+        elif self._entry_mode == EntryMode.Disable:
             cursor, entry_state, style, takefocus_val = 'no', 'readonly', self._styles.disable, 0
-        elif self._func_state == EntryFuncState.Readonly:
+        elif self._entry_mode == EntryMode.Readonly:
             cursor, entry_state = 'xterm', 'readonly'
             if self._interaction_state == EntryInteractionState.Focus: style = self._styles.focus
             elif self._interaction_state == EntryInteractionState.Hover: style = self._styles.hover
@@ -189,9 +190,9 @@ class Entry(View):
             insertbackground=style.fg
         )
 
-        if self._func_state == EntryFuncState.Disable:
+        if self._entry_mode == EntryMode.AllDisable:
             self._tk_entry.config(disabledbackground=style.bg, disabledforeground=style.fg)
-        if self._func_state in [EntryFuncState.Readonly, EntryFuncState.SimulateDisable]:
+        if self._entry_mode in [EntryMode.Readonly, EntryMode.Disable]:
             self._tk_entry.config(readonlybackground=style.bg)
 
         self._tk_entry.config(
@@ -206,7 +207,7 @@ class Entry(View):
         return event.x
 
     def _on_click_internal(self, event):
-        if self._func_state not in [EntryFuncState.Disable, EntryFuncState.SimulateDisable]:
+        if self._entry_mode not in [EntryMode.AllDisable, EntryMode.Disable]:
             rel_x = self._get_rel_x(event)
             target_index = self._tk_entry.index(f"@{rel_x}")
             self._tk_entry.icursor(target_index)
@@ -214,7 +215,7 @@ class Entry(View):
             self.on_click.broadcast(event)
 
     def _on_motion_internal(self, event):
-        if self._func_state not in [EntryFuncState.Disable, EntryFuncState.SimulateDisable]:
+        if self._entry_mode not in [EntryMode.AllDisable, EntryMode.Disable]:
             if event.state & 0x0100:
                 rel_x = self._get_rel_x(event)
                 self._tk_entry.selection_to(f"@{rel_x}")
@@ -222,20 +223,20 @@ class Entry(View):
             self.on_motion.broadcast(event)
 
     def _on_focus_in_internal(self, event):
-        if self._func_state in [EntryFuncState.Disable, EntryFuncState.SimulateDisable]:
+        if self._entry_mode in [EntryMode.AllDisable, EntryMode.Disable]:
             return "break"
         self._interaction_state = EntryInteractionState.Focus
         self._update_styles()
         self.on_focus_in.broadcast()
 
     def _on_focus_out_internal(self, event):
-        if self._func_state not in [EntryFuncState.Disable, EntryFuncState.SimulateDisable]:
+        if self._entry_mode not in [EntryMode.AllDisable, EntryMode.Disable]:
             self._interaction_state = EntryInteractionState.Idle
             self._update_styles()
         self.on_focus_out.broadcast()
 
     def _on_enter_internal(self, event):
-        if self._func_state not in [EntryFuncState.Disable, EntryFuncState.SimulateDisable]:
+        if self._entry_mode not in [EntryMode.AllDisable, EntryMode.Disable]:
             if self._tk_entry.focus_get() == self._tk_entry:
                 self._interaction_state = EntryInteractionState.Focus
             else:
@@ -244,14 +245,14 @@ class Entry(View):
             self.on_enter.broadcast(event)
 
     def _on_leave_internal(self, event):
-        if self._func_state not in [EntryFuncState.Disable, EntryFuncState.SimulateDisable]:
+        if self._entry_mode not in [EntryMode.AllDisable, EntryMode.Disable]:
             if self._interaction_state != EntryInteractionState.Focus:
                 self._interaction_state = EntryInteractionState.Idle
                 self._update_styles()
             self.on_leave.broadcast(event)
 
     def _on_press_internal(self, event):
-        if self._func_state not in [EntryFuncState.Disable, EntryFuncState.SimulateDisable]:
+        if self._entry_mode not in [EntryMode.AllDisable, EntryMode.Disable]:
             if self._tk_entry.focus_get() != self._tk_entry:
                 self._interaction_state = EntryInteractionState.Active
                 self._update_styles()
@@ -265,7 +266,7 @@ class Entry(View):
                     self._tk_entry.event_generate('<ButtonPress-1>', x=entry_x, y=entry_y)
 
     def _on_release_internal(self, event):
-        if self._func_state not in [EntryFuncState.Disable, EntryFuncState.SimulateDisable]:
+        if self._entry_mode not in [EntryMode.AllDisable, EntryMode.Disable]:
             if self._tk_entry.focus_get() == self._tk_entry:
                 self._interaction_state = EntryInteractionState.Focus
             else:
@@ -274,7 +275,7 @@ class Entry(View):
             self.on_release.broadcast(event)
 
     def _on_key_press_internal(self, event):
-        if self._func_state not in [EntryFuncState.Disable, EntryFuncState.Readonly, EntryFuncState.SimulateDisable]:
+        if self._entry_mode not in [EntryMode.AllDisable, EntryMode.Readonly, EntryMode.Disable]:
             self.on_key_press.broadcast(event.char, event.keysym)
 
     def _on_text_changed(self, *args):
@@ -284,14 +285,14 @@ class Entry(View):
         self.on_configure.broadcast(event)
 
     def _on_double_click_internal(self, event):
-        if self._func_state != EntryFuncState.Disable:
+        if self._entry_mode != EntryMode.AllDisable:
             self._tk_entry.selection_range(0, tk.END)
             self._tk_entry.icursor(tk.END)
             self.on_double_click.broadcast(event)
             return "break"
 
     def _on_triple_click_internal(self, event):
-        if self._func_state != EntryFuncState.Disable:
+        if self._entry_mode != EntryMode.AllDisable:
             self._tk_entry.selection_range(0, tk.END)
             self.on_triple_click.broadcast(event)
             return "break"
@@ -312,7 +313,7 @@ class Entry(View):
             self._is_global_click_bound = False
 
     def _update_global_click_binding(self):
-        if self._func_state == EntryFuncState.Disable:
+        if self._entry_mode == EntryMode.AllDisable:
             self._unbind_global_click()
         else:
             self._bind_global_click()
@@ -320,7 +321,7 @@ class Entry(View):
     def _on_global_click(self, event):
         try:
             if not self._tk_frame.winfo_exists(): return
-            if self._func_state not in [EntryFuncState.Disable]:
+            if self._entry_mode not in [EntryMode.AllDisable]:
                 if event.widget != self._tk_frame and event.widget != self._tk_entry:
                     try:
                         selected_text = self._tk_entry.selection_get()
@@ -369,38 +370,41 @@ class Entry(View):
 
     def _register_listeners(self):
         self.styles.on_theme_changed.add_listener(self._on_theme_changed_internal)
+        self.lm.on_language_changed.add_listener(self._on_language_changed_internal)
 
     def _unregister_listeners(self):
         self.styles.on_theme_changed.remove_listener(self._on_theme_changed_internal)
+        self.lm.on_language_changed.remove_listener(self._on_language_changed_internal)
 
     def _on_theme_changed_internal(self, theme):
         self._config_styles()
         self.refresh()
 
-    def set_is_readonly(self, readonly):
-        self._func_state = EntryFuncState.Readonly if readonly else EntryFuncState.Normal
+    def _on_language_changed_internal(self, language):
+        if self._text is not None:
+            self._textvariable.set(self._text.get_text())
+
+    def set_mode(self, mode):
+        if not isinstance(mode, EntryMode):
+            raise ValueError("mode must be EntryMode enum value")
+        self._entry_mode = mode
         self._update_global_click_binding()
         self.refresh()
 
     def set_disabled(self, disabled):
-        self._func_state = EntryFuncState.SimulateDisable if disabled else EntryFuncState.Normal
-        self._update_global_click_binding()
-        self.refresh()
-
-    def set_disable_completely(self, disabled):
-        self._func_state = EntryFuncState.Disable if disabled else EntryFuncState.Normal
+        self._entry_mode = EntryMode.Disable if disabled else EntryMode.Normal
         self._update_global_click_binding()
         self.refresh()
 
     def is_disabled(self):
-        return self._func_state in [EntryFuncState.Disable, EntryFuncState.SimulateDisable]
+        return self._entry_mode in [EntryMode.AllDisable, EntryMode.Disable]
 
     def refresh(self):
         self._interaction_state = EntryInteractionState.Idle
         self._update_styles()
 
     def focus_set(self):
-        if self._func_state not in [EntryFuncState.Disable, EntryFuncState.SimulateDisable]:
+        if self._entry_mode not in [EntryMode.AllDisable, EntryMode.Disable]:
             self._tk_entry.focus_set()
 
     def get(self):
@@ -430,19 +434,19 @@ class Entry(View):
             self._tk_entry.config(state=current_state)
 
     def set_state_config_override(self, state, config):
-        if isinstance(state, EntryFuncState):
+        if isinstance(state, EntryMode):
             if state not in self._override_state_config:
                 self._override_state_config[state] = {}
             self._override_state_config[state].update(config)
             self._update_styles()
         else:
-            raise ValueError("state must be EntryFuncState enum value")
+            raise ValueError("state must be EntryMode enum value")
 
     def set_cursor_override(self, state, cursor):
-        if isinstance(state, EntryFuncState):
+        if isinstance(state, EntryMode):
             if state not in self._override_state_config:
                 self._override_state_config[state] = {}
             self._override_state_config[state]['cursor'] = cursor
             self._update_styles()
         else:
-            raise ValueError("state must be EntryFuncState enum value")
+            raise ValueError("state must be EntryMode enum value")

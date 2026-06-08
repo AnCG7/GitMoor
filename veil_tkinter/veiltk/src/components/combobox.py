@@ -6,7 +6,7 @@ from ..core.manager.event_manager import Event
 from ..core.manager.localization_manager import LocalizedText, LocalizationManager
 from ..core.utils.utils import Utils
 from ..core.utils.asset_loader import AssetLoader
-from .entry import Entry, EntryFuncState
+from .entry import Entry, EntryMode
 from .scroll_listbox import ScrollListbox
 
 
@@ -132,8 +132,8 @@ class Combobox(View):
             highlightthickness=0,
             takefocus=0
         )
-        self.entry.set_is_readonly(True)
-        self.entry.set_state_config_override(EntryFuncState.Readonly, {'takefocus': 0, 'cursor': 'hand2'})
+        self.entry.set_mode(EntryMode.Readonly)
+        self.entry.set_state_config_override(EntryMode.Readonly, {'takefocus': 0, 'cursor': 'hand2'})
         self.entry._tk_entry.config(width=1)
         self.entry._tk_frame.grid(row=0, column=0, sticky='ew')
 

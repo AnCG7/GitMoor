@@ -8,6 +8,7 @@ sys.path.insert(0, veiltk_dir)
 
 import veiltk as vk
 from veiltk.src.components.progress import Orientation
+from veiltk.src.components.entry import EntryMode
 
 
 class ThemeSwitcher(vk.Frame):
@@ -115,7 +116,7 @@ class EntryPage(vk.Frame):
 
         vk.Label(self, text=vk.LocalizedText("只读输入框:")).pack(anchor='w')
         entry = vk.Entry(self)
-        entry.set_is_readonly(True)
+        entry.set_mode(EntryMode.Readonly)
         entry.set_text(vk.LocalizedText("只读内容"))
         entry.pack(fill='x', pady=5)
 
