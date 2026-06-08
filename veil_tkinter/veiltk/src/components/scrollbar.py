@@ -42,6 +42,8 @@ class Scrollbar(View):
         self._thumb_margin = 1
         self._internal_bind_ids = []
 
+        self.styles = UIStyleManager.get_instance()
+
         self.on_configure = Event()
         self.on_scroll = Event()
         self.on_click = Event()
@@ -51,7 +53,6 @@ class Scrollbar(View):
 
     def _build_widget(self, master=None, **kwargs):
         master_tk = self._get_master_tk()
-        self.styles = UIStyleManager.get_instance()
         self._config_styles()
 
         if self._orientation == Orientation.Vertical:

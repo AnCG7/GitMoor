@@ -34,6 +34,7 @@ class Entry(View):
         self._override_state_config = {}
         self._internal_bind_ids = []
         self.lm = LocalizationManager.get_instance()
+        self.styles = UIStyleManager.get_instance()
 
         self.on_focus_in = Event()
         self.on_focus_out = Event()
@@ -54,7 +55,6 @@ class Entry(View):
     def _build_widget(self, master=None, **kwargs):
         master_tk = self._get_master_tk()
             
-        self.styles = UIStyleManager.get_instance()
         self._config_styles()
 
         size_preset = self.styles.get_size_preset('normal')

@@ -10,6 +10,8 @@ class Frame(View):
         self._styles = None
         self._internal_bind_ids = []
 
+        self.styles = UIStyleManager.get_instance()
+
         self.on_map = Event()
         self.on_unmap = Event()
         self.on_configure = Event()
@@ -30,7 +32,6 @@ class Frame(View):
     def _build_widget(self, master=None, **kwargs):
         master_tk = self._get_master_tk()
             
-        self.styles = UIStyleManager.get_instance()
         default_kwargs = {
             "bg": self.styles.get_style().component.frame.bg.color,
             "takefocus": False

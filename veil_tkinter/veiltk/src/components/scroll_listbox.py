@@ -49,6 +49,7 @@ class ScrollListbox(View):
 
         self._internal_bind_ids = []
 
+        self.styles = UIStyleManager.get_instance()
 
         self.on_select = Event()
 
@@ -68,8 +69,6 @@ class ScrollListbox(View):
 
         master_tk = self._get_master_tk()
 
-
-        self.styles = UIStyleManager.get_instance()
 
         self._config_styles()
 

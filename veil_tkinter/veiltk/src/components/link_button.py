@@ -19,6 +19,9 @@ class LinkButton(View):
         self._button_style = None
         self._internal_bind_ids = []
 
+        self.styles = UIStyleManager.get_instance()
+        self.localization = LocalizationManager.get_instance()
+
         self.on_click = Event()
         self.on_enter = Event()
         self.on_leave = Event()
@@ -27,9 +30,6 @@ class LinkButton(View):
 
     def _build_widget(self, master=None, **kwargs):
         master_tk = self._get_master_tk()
-            
-        self.styles = UIStyleManager.get_instance()
-        self.localization = LocalizationManager.get_instance()
         self._button_style = self._config_styles()
 
         display_text = self._text.get_text() if hasattr(self._text, 'get_text') else self._text if self._text else ""

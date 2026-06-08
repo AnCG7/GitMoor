@@ -38,9 +38,10 @@ class NormalButton(Button):
         self._pressed = False
         self._focused = False
 
-        ui = UIStyleManager.get_instance()
+        self.styles = UIStyleManager.get_instance()
+        self.localization = LocalizationManager.get_instance()
         size_value = self._size.value
-        preset = ui.get_size_preset(size_value)
+        preset = self.styles.get_size_preset(size_value)
         if 'padx' not in kwargs:
             kwargs['padx'] = preset['padx']
         if 'pady' not in kwargs:
@@ -60,9 +61,6 @@ class NormalButton(Button):
     def _build_widget(self, master=None, **kwargs):
         master_tk = self._get_master_tk()
 
-        self.styles = UIStyleManager.get_instance()
-        self.localization = LocalizationManager.get_instance()
-
         display_text = self._text.get_text() if hasattr(self._text, 'get_text') else self._text if self._text else ""
 
         width = self._kwargs.pop('width', None)
@@ -72,9 +70,8 @@ class NormalButton(Button):
 
         self._button_style = self._config_styles()
 
-        ui = UIStyleManager.get_instance()
         size_value = self._size.value if hasattr(self._size, 'value') else self._size
-        preset = ui.get_size_preset(size_value)
+        preset = self.styles.get_size_preset(size_value)
 
         default_kwargs = {
             "text": display_text,
@@ -302,8 +299,7 @@ class NormalButton(Button):
         if not isinstance(size, ButtonSize):
             raise TypeError("size 参数必须是 ButtonSize 枚举类型")
         self._size = size
-        ui = UIStyleManager.get_instance()
-        preset = ui.get_size_preset(size.value)
+        preset = self.styles.get_size_preset(size.value)
         self._tk_button.config(padx=preset['padx'], pady=preset['pady'])
 
     def set_disabled(self, disabled):

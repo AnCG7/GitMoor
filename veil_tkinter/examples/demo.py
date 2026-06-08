@@ -112,6 +112,7 @@ class EntryPage(vk.Frame):
         vk.Label(self, text=vk.LocalizedText("禁用输入框:")).pack(anchor='w')
         entry = vk.Entry(self)
         entry.set_disabled(True)
+        entry.set_text(vk.LocalizedText("禁用内容"))
         entry.pack(fill='x', pady=5)
 
         vk.Label(self, text=vk.LocalizedText("只读输入框:")).pack(anchor='w')
@@ -296,13 +297,13 @@ class ProgressPage(vk.Frame):
         progress_disabled.pack(fill='x', pady=5)
 
 
-class MessageBoxPage(vk.Frame):
+class DialogPage(vk.Frame):
     def __init__(self, master=None):
         super().__init__(master)
         self._setup_ui()
 
     def _setup_ui(self):
-        vk.Label(self, text=vk.LocalizedText("MessageBox 组件演示")).pack(anchor='w', pady=(0, 10))
+        vk.Label(self, text=vk.LocalizedText("Dialog 组件演示")).pack(anchor='w', pady=(0, 10))
 
         btn_confirm = vk.NormalButton(
             self,
@@ -363,7 +364,7 @@ class MessageBoxPage(vk.Frame):
         vk.Alert.show_normal(
             master=self,
             title=vk.LocalizedText("提示"),
-            message=vk.LocalizedText("操作已完成。")
+            message=vk.LocalizedText("操作已完成。这是一段多行的提示内容，用于测试 Alert 组件在内容较多时的显示效果。")
         )
 
     def _on_loading_rect(self):
@@ -463,7 +464,7 @@ def main():
         {'text': vk.LocalizedText("LinkButton"),     'page': LinkButtonPage},
         {'text': vk.LocalizedText("ScrollListbox"),  'page': ScrollListboxPage},
         {'text': vk.LocalizedText("Progress"),      'page': ProgressPage},
-        {'text': vk.LocalizedText("MessageBox"),     'page': MessageBoxPage},
+        {'text': vk.LocalizedText("Dialog"),     'page': DialogPage},
     ]
 
     menu = vk.Menu(

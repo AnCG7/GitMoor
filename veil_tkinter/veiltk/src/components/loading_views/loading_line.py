@@ -17,12 +17,13 @@ class LoadingLineView(View):
         self._after_id = None
         self._internal_bind_ids = []
         
+        self._styles = UIStyleManager.get_instance()
+        
         super().__init__(master, **kwargs)
     
     def _build_widget(self, master=None, **kwargs):
         master_tk = self._get_master_tk()
         
-        self._styles = UIStyleManager.get_instance()
         style = self._styles.get_style().component.loading
         
         # 创建根 Frame

@@ -88,13 +88,14 @@ class Text(View):
         self._on_scroll_event = Event()
         self._on_tab_block_event = Event()
 
+        self.styles = UIStyleManager.get_instance()
+        self.localization = LocalizationManager.get_instance()
+
         super().__init__(master, **kwargs)
 
     def _build_widget(self, master=None, **kwargs):
         master_tk = self._get_master_tk()
 
-        self.styles = UIStyleManager.get_instance()
-        self.localization = LocalizationManager.get_instance()
         self._config_styles()
 
         size_preset = self.styles.get_size_preset('normal')

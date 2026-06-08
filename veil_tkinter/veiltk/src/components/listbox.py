@@ -23,6 +23,8 @@ class ListBoxItem(View):
         self._disabled = False
         self._internal_bind_ids = []
 
+        self.styles = UIStyleManager.get_instance()
+
         kwargs['takefocus'] = kwargs.get('takefocus', False)
 
         self.on_click = Event()
@@ -37,7 +39,6 @@ class ListBoxItem(View):
     def _build_widget(self, master=None, **kwargs):
         master_tk = self._get_master_tk()
             
-        self.styles = UIStyleManager.get_instance()
         self._button_style = self._config_styles()
 
         display_text = self._text.get_text() if hasattr(self._text, 'get_text') else ""
@@ -191,6 +192,7 @@ class ListBoxItem(View):
 class ListBox(View):
     def __init__(self, master=None, **kwargs):
         self.styles = UIStyleManager.get_instance()
+        self.localization = LocalizationManager.get_instance()
         self._disabled = False
         self._item_pady = 4
         self._kwargs = kwargs
@@ -364,7 +366,6 @@ class ListBox(View):
 
     def _register_listeners(self):
         self.styles.on_theme_changed.add_listener(self._on_theme_changed_internal)
-        self.localization = LocalizationManager.get_instance()
         self.localization.on_language_changed.add_listener(self._on_language_changed_internal)
 
     def _unregister_listeners(self):

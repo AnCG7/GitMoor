@@ -24,6 +24,8 @@ class Progress(View):
         self._styles = None
         self._internal_bind_ids = []
 
+        self.styles = UIStyleManager.get_instance()
+
         self.on_configure = Event()
         
         super().__init__(master, **kwargs)
@@ -31,7 +33,6 @@ class Progress(View):
     def _build_widget(self, master=None, **kwargs):
         master_tk = self._get_master_tk()
             
-        self.styles = UIStyleManager.get_instance()
         self._config_styles()
 
         default_kwargs = {

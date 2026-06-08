@@ -17,6 +17,8 @@ class BrowseEntry(View):
         self._entry = None
         self._button = None
 
+        self.styles = UIStyleManager.get_instance()
+
         self.on_entry_text_changed = Event()
         self.on_browse_clicked = Event()
         self.on_focus_out = Event()
@@ -26,7 +28,6 @@ class BrowseEntry(View):
     def _build_widget(self, master=None, **kwargs):
         master_tk = self._get_master_tk()
         
-        self.styles = UIStyleManager.get_instance()
         bg_color = self.styles.get_style().component.frame.bg.color
         
         self._tk_frame = tk.Frame(master_tk, bg=bg_color)

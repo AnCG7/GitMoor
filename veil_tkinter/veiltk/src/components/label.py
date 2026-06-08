@@ -25,15 +25,15 @@ class Label(View):
         self._color_type = LabelColorType.Normal
         self._internal_bind_ids = []
 
+        self.styles = UIStyleManager.get_instance()
+        self.localization = LocalizationManager.get_instance()
+
         self.on_click = Event()
 
         super().__init__(master, **kwargs)
 
     def _build_widget(self, master=None, **kwargs):
         master_tk = self._get_master_tk()
-            
-        self.styles = UIStyleManager.get_instance()
-        self.localization = LocalizationManager.get_instance()
         self._config_styles()
 
         if self._text:
