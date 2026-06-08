@@ -132,6 +132,37 @@
       "border": "border"
     }
   },
+  "text": {
+    "normal": {
+      "bg": "bg_color",
+      "fg": "fg_color",
+      "border": "border"
+    },
+    "hover": {
+      "bg": "bg_color",
+      "fg": "fg_color",
+      "border": "primary_hover"
+    },
+    "active": {
+      "bg": "bg_color",
+      "fg": "fg_color",
+      "border": "primary"
+    },
+    "selected_font":{
+      "bg": "primary",
+      "fg": "primary_fg"
+    },
+    "focus": {
+      "bg": "bg_color",
+      "fg": "fg_color",
+      "border": "primary"
+    },
+    "disable": {
+      "bg": "disable_bg",
+      "fg": "disable_fg",
+      "border": "border"
+    }
+  },
   "scrollbar": {
     "normal": {
       "bg": "bg_color",
@@ -154,6 +185,13 @@
       "trough": "bg_color",
       "border": "border"
     },
+    "prefocus": {
+      "bg": "bg_color",
+      "fg": "fg_color",
+      "thumb": "scrollbar_prefocus",
+      "trough": "bg_color",
+      "border": "border"
+    },
     "focus": {
       "bg": "bg_color",
       "fg": "fg_color",
@@ -165,7 +203,7 @@
       "bg": "disable_bg",
       "fg": "disable_fg",
       "thumb": "disable_fg",
-      "trough": "bg_color",
+      "trough": "disable_bg",
       "border": "border"
     }
   },

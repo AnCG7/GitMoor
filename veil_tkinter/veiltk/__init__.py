@@ -22,6 +22,7 @@ from .src.components.overlay import Overlay
 from .src.components.progress import Progress
 from .src.components.scroll_listbox import ScrollListbox
 from .src.components.scrollbar import Scrollbar
+from .src.components.text import Text, TextMode, TextWrapMode, TextInteractionState
 from .src.components.loading_views.loading_line import LoadingLineView
 from .src.components.loading_views.loading_chase import LoadingChaseView
 from .src.components.loading_views.loading_rect import LoadingRectView
@@ -72,6 +73,10 @@ __all__ = [
     'Progress',
     'ScrollListbox',
     'Scrollbar',
+    'Text',
+    'TextMode',
+    'TextWrapMode',
+    'TextInteractionState',
     'LoadingLineView',
     'LoadingChaseView',
     'LoadingRectView',

@@ -33,6 +33,7 @@ python examples/demo.py
 | 标签 | `Label` | 支持 Normal / Warning / Error / Success 四种颜色类型，支持自适应换行 |
 | 按钮 | `NormalButton` | Primary / Secondary 样式，Small / Normal / Large 尺寸，完整交互状态 |
 | 输入框 | `Entry` | 支持禁用、只读、聚焦高亮 |
+| 多行文本框 | `Text` | 支持 Normal / Readonly / Display / Disable / Label 多种模式，内置滚动条，可设换行模式 |
 | 下拉框 | `Combobox` | 自定义弹出列表，悬停/选中/禁用状态 |
 | 复选框 | `CheckButton` | 自绘指示器，支持选中/禁用组合状态 |
 | 链接按钮 | `LinkButton` | 超链接风格，可绑定 URL |

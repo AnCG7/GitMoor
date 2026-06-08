@@ -120,6 +120,66 @@ class EntryPage(vk.Frame):
         entry.pack(fill='x', pady=5)
 
 
+class TextPage(vk.Frame):
+    def __init__(self, master=None):
+        super().__init__(master)
+        self._setup_ui()
+
+    def _setup_ui(self):
+        vk.Label(self, text=vk.LocalizedText("Text 组件演示")).pack(anchor='w', pady=(0, 10))
+
+        vk.Label(self, text=vk.LocalizedText("普通编辑模式 (Normal):")).pack(anchor='w')
+        text_normal = vk.Text(self, wrap_mode=vk.TextWrapMode.Word)
+        text_normal.set_width(50)
+        text_normal.set_line_height(3)
+        text_normal.insert('1.0', "这是普通编辑模式，支持多行编辑、撤销重做、复制粘贴。\nTab 键插入制表符，Ctrl+Tab 切换焦点。")
+        text_normal.pack(fill='x', pady=(0, 10))
+
+        vk.Label(self, text=vk.LocalizedText("只读模式 (Readonly) - 可选中可复制:")).pack(anchor='w')
+        text_ro = vk.Text(self)
+        text_ro.set_mode(vk.TextMode.Readonly)
+        text_ro.set_width(50)
+        text_ro.set_line_height(2)
+        text_ro.insert('1.0', "只读模式下可以选中文本并复制，但不可编辑。\n适合展示日志、配置文件等内容。")
+        text_ro.pack(fill='x', pady=(0, 10))
+
+        vk.Label(self, text=vk.LocalizedText("禁用模式 (Disable):")).pack(anchor='w')
+        text_disabled = vk.Text(self)
+        text_disabled.set_mode(vk.TextMode.Disable)
+        text_disabled.set_width(50)
+        text_disabled.set_line_height(2)
+        text_disabled.insert('1.0', "禁用模式下不可交互、不可选择、不可聚焦。")
+        text_disabled.pack(fill='x', pady=(0, 10))
+
+        vk.Label(self, text=vk.LocalizedText("标签模式 (Label) - 无边框装饰:")).pack(anchor='w')
+        text_label = vk.Text(self)
+        text_label.set_mode(vk.TextMode.Label)
+        text_label.set_width(50)
+        text_label.set_line_height(2)
+        text_label.insert('1.0', "Label 模式去掉边框装饰，适合作为信息展示面板。")
+        text_label.pack(fill='x', pady=(0, 10))
+
+        vk.Label(self, text=vk.LocalizedText("富文本 - set_text + tag_add:")).pack(anchor='w', pady=(5, 0))
+        text_rich = vk.Text(self, wrap_mode=vk.TextWrapMode.Word)
+        text_rich.set_mode(vk.TextMode.Readonly)
+        text_rich.set_width(50)
+        text_rich.set_line_height(5)
+        text_rich.set_text(vk.LocalizedText(
+            "红色大字 + 蓝色斜体 + 绿色下划线\n"
+            "这是一个多色多风格的富文本演示。\n"
+            "不同标签可以叠加在同一段文字上。\n"
+            "补充一些文字超过高度。\n"
+            "补充一些文字超过高度。\n"
+        ))
+        text_rich.tag_configure('red_big', foreground='red', font=('Arial', 14, 'bold'))
+        text_rich.tag_configure('blue_italic', foreground='blue', font=('Arial', 12, 'italic'))
+        text_rich.tag_configure('green_underline', foreground='green', font=('Arial', 12, 'underline'))
+        text_rich.tag_add('red_big', '1.0', '1.4')
+        text_rich.tag_add('blue_italic', '1.7', '1.11')
+        text_rich.tag_add('green_underline', '1.13', '1.17')
+        text_rich.pack(fill='x')
+
+
 class ComboboxPage(vk.Frame):
     def __init__(self, master=None):
         super().__init__(master)
@@ -396,6 +456,7 @@ def main():
         {'text': vk.LocalizedText("Label"),          'page': LabelPage},
         {'text': vk.LocalizedText("Button"),        'page': ButtonPage},
         {'text': vk.LocalizedText("Entry"),          'page': EntryPage},
+        {'text': vk.LocalizedText("Text"),           'page': TextPage},
         {'text': vk.LocalizedText("Combobox"),       'page': ComboboxPage},
         {'text': vk.LocalizedText("CheckButton"),     'page': CheckButtonPage},
         {'text': vk.LocalizedText("LinkButton"),     'page': LinkButtonPage},

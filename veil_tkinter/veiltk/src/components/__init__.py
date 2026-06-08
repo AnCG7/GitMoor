@@ -14,6 +14,7 @@ from .overlay import Overlay
 from .progress import Progress
 from .scroll_listbox import ScrollListbox
 from .scrollbar import Scrollbar
+from .text import Text, TextMode, TextWrapMode, TextInteractionState
 from .loading_views.loading_line import LoadingLineView
 from .loading_views.loading_chase import LoadingChaseView
 from .loading_views.loading_rect import LoadingRectView
@@ -41,6 +42,10 @@ __all__ = [
     'Progress',
     'ScrollListbox',
     'Scrollbar',
+    'Text',
+    'TextMode',
+    'TextWrapMode',
+    'TextInteractionState',
     'LoadingLineView',
     'LoadingChaseView',
     'LoadingRectView',

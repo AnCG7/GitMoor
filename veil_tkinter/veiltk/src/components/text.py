@@ -1,0 +1,989 @@
+import tkinter as tk
+import enum
+from ..core.view import View
+from ..core.manager.ui_style_manager import UIStyleManager, StyleObject
+from ..core.manager.event_manager import Event
+from ..core.manager.localization_manager import LocalizedText, LocalizationManager
+from .scrollbar import Scrollbar, Orientation, ScrollbarState
+from .scroll_listbox import ScrollbarMode
+
+
+class TextMode(enum.Enum):
+    Normal = "normal"
+    Readonly = "readonly"
+    Display = "display"
+    Disable = "disable"
+    Label = "label"
+
+
+class TextInteractionState(enum.Enum):
+    Idle = "none"
+    Hover = "hover"
+    Active = "active"
+    Focus = "focus"
+
+
+class TextWrapMode(enum.Enum):
+    None_ = "none"
+    Char = "char"
+    Word = "word"
+
+    def to_tk(self):
+        _WRAP_MAP = {
+            TextWrapMode.None_: tk.NONE,
+            TextWrapMode.Char: tk.CHAR,
+            TextWrapMode.Word: tk.WORD,
+        }
+        return _WRAP_MAP[self]
+
+
+class Text(View):
+    def __init__(self, master=None, text=None, wrap_mode=TextWrapMode.Char, scrollbar_mode=ScrollbarMode.Auto, **kwargs):
+        if text is not None and not isinstance(text, LocalizedText):
+            raise TypeError("text 参数必须是 LocalizedText 类型")
+
+        if not isinstance(wrap_mode, TextWrapMode):
+            raise TypeError("wrap_mode 参数必须是 TextWrapMode 枚举类型")
+
+        if not isinstance(scrollbar_mode, ScrollbarMode):
+            raise TypeError("scrollbar_mode 参数必须是 ScrollbarMode 枚举类型")
+
+        if 'wrap' in kwargs:
+            print(f"警告: 不支持通过 kwargs 设置 wrap，请使用 wrap_mode 参数或 set_wrap_mode() 方法，已忽略传入的 wrap 值")
+            kwargs.pop('wrap')
+
+        self._text = text
+        self._wrap_mode = wrap_mode
+        self._scrollbar_mode = scrollbar_mode
+        self._kwargs = kwargs
+        self._tk_frame = None
+        self._tk_frame_b = None
+        self._tk_text = None
+        self._scrollbar = None
+        self._styles = None
+        self._text_mode = TextMode.Normal
+        self._interaction_state = TextInteractionState.Idle
+        self._scrollbar_visible = None
+        self._mouse_inside = False
+        self._block_tab = False
+        self._internal_bind_ids = []
+        self._show_frame_decoration = True
+        self._selectable = False
+        self._copyable = False
+
+        # Events
+        self.on_focus_in = Event()
+        self.on_focus_out = Event()
+        self.on_text_changed = Event()
+        self._on_click_event = Event()
+        self._on_double_click_event = Event()
+        self._on_triple_click_event = Event()
+        self._on_enter_event = Event()
+        self._on_leave_event = Event()
+        self._on_press_event = Event()
+        self._on_release_event = Event()
+        self._on_motion_event = Event()
+        self._on_key_press_event = Event()
+        self._on_configure_event = Event()
+        self._on_scroll_event = Event()
+        self._on_tab_block_event = Event()
+
+        super().__init__(master, **kwargs)
+
+    def _build_widget(self, master=None, **kwargs):
+        master_tk = self._get_master_tk()
+
+        self.styles = UIStyleManager.get_instance()
+        self.localization = LocalizationManager.get_instance()
+        self._config_styles()
+
+        size_preset = self.styles.get_size_preset('normal')
+        self._padx = 4
+        self._pady = size_preset['pady']
+
+        default_kwargs = {
+            "bg": self._styles.normal.bg,
+            "relief": tk.FLAT,
+            "borderwidth": 0,
+            "highlightthickness": 1,
+            "highlightbackground": self._styles.normal.border,
+            "highlightcolor": self._styles.focus.border,
+            "takefocus": True,
+        }
+        default_kwargs.update(self._kwargs)
+        self._tk_frame = tk.Frame(master_tk, **default_kwargs)
+
+        self._tk_frame_b = tk.Frame(
+            self._tk_frame,
+            bg=self._styles.normal.bg,
+            padx=self._padx,
+            pady=self._pady,
+            relief=tk.FLAT,
+            borderwidth=0,
+            highlightthickness=0,
+        )
+
+        self._create_widgets()
+        self._bind_events()
+        self._register_listeners()
+        self._update_styles()
+        self._tk_frame.after_idle(self._update_scrollbar_state)
+
+        return self._tk_frame
+
+    def _create_widgets(self):
+        bg_color = self._styles.normal.bg
+        fg_color = self._styles.normal.fg
+        normal_font = self._styles.normal.font
+        wrap_tk = self._wrap_mode.to_tk()
+
+        self._tk_text = tk.Text(
+            self._tk_frame_b,
+            wrap=wrap_tk,
+            width=40,
+            height=1,
+            bg=bg_color,
+            fg=fg_color,
+            font=normal_font,
+            relief=tk.FLAT,
+            borderwidth=0,
+            highlightthickness=0,
+            padx=0,
+            pady=2,
+            cursor='xterm',
+            takefocus=1,
+            undo=True,
+            maxundo=50,
+            tabs=(32,),
+        )
+
+        if self._text:
+            display_text = self._text.get_text()
+            self._tk_text.insert('1.0', display_text)
+            self._tk_text.edit_modified(False)
+
+        self._tk_text.config(yscrollcommand=self._sync_scrollbar)
+
+        self._scrollbar = Scrollbar(self._tk_frame, orientation=Orientation.Vertical)
+        self._scrollbar.on_scroll.add_listener(self._on_scrollbar_scroll)
+        self._scrollbar.on_click.add_listener(self._on_scrollbar_click)
+
+        self._hack_internal_components()
+
+        self._tk_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self._tk_frame_b.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+    def _hack_internal_components(self):
+        self._tk_text.config(takefocus=0)
+        self._scrollbar.config(takefocus=0)
+        self._tk_text.config(highlightthickness=0, borderwidth=0)
+
+    def _bind_events(self):
+        bind_targets = [self._tk_frame_b, self._tk_text]
+        for target in bind_targets:
+            self._internal_bind_ids.append((target, '<Button-1>', target.bind('<Button-1>', self._on_press_internal, add='+')))
+            self._internal_bind_ids.append((target, '<Double-Button-1>', target.bind('<Double-Button-1>', self._on_double_click_internal, add='+')))
+            self._internal_bind_ids.append((target, '<Triple-Button-1>', target.bind('<Triple-Button-1>', self._on_triple_click_internal, add='+')))
+            self._internal_bind_ids.append((target, '<Enter>', target.bind('<Enter>', self._on_enter_internal, add='+')))
+            self._internal_bind_ids.append((target, '<Leave>', target.bind('<Leave>', self._on_leave_internal, add='+')))
+            self._internal_bind_ids.append((target, '<ButtonRelease-1>', target.bind('<ButtonRelease-1>', self._on_release_internal, add='+')))
+            self._internal_bind_ids.append((target, '<Motion>', target.bind('<Motion>', self._on_motion_internal, add='+')))
+            self._internal_bind_ids.append((target, '<B1-Motion>', target.bind('<B1-Motion>', self._on_motion_internal, add='+')))
+
+        # 焦点管理
+        self._internal_bind_ids.append((self._tk_frame, '<FocusIn>', self._tk_frame.bind('<FocusIn>', self._on_focus_in_internal, add='+')))
+        self._internal_bind_ids.append((self._tk_frame, '<FocusOut>', self._tk_frame.bind('<FocusOut>', self._on_focus_out_internal, add='+')))
+
+        # Tab 导航
+        self._internal_bind_ids.append((self._tk_text, '<Tab>', self._tk_text.bind('<Tab>', self._on_tab_internal, add='+')))
+        self._internal_bind_ids.append((self._tk_text, '<Shift-Tab>', self._tk_text.bind('<Shift-Tab>', self._on_shift_tab_internal, add='+')))
+        self._internal_bind_ids.append((self._tk_text, '<ISO_Left_Tab>', self._tk_text.bind('<ISO_Left_Tab>', self._on_shift_tab_internal, add='+')))
+        self._internal_bind_ids.append((self._tk_text, '<Control-Tab>', self._tk_text.bind('<Control-Tab>', self._on_ctrl_tab_internal, add='+')))
+        self._internal_bind_ids.append((self._tk_text, '<Control-Shift-Tab>', self._tk_text.bind('<Control-Shift-Tab>', self._on_ctrl_shift_tab_internal, add='+')))
+
+        # 核心拦截与底层事件监听
+        self._internal_bind_ids.append((self._tk_text, '<KeyPress>', self._tk_text.bind('<KeyPress>', self._on_key_press_internal, add='+')))
+        self._internal_bind_ids.append((self._tk_text, '<Configure>', self._tk_text.bind('<Configure>', self._on_configure_internal, add='+')))
+        self._internal_bind_ids.append((self._tk_text, '<<Modified>>', self._tk_text.bind('<<Modified>>', self._on_text_modified_internal, add='+')))
+
+        # 快捷键拦截与放行
+        self._internal_bind_ids.append((self._tk_text, '<<Copy>>', self._tk_text.bind('<<Copy>>', self._on_platform_copy, add='+')))
+        self._internal_bind_ids.append((self._tk_text, '<<SelectAll>>', self._tk_text.bind('<<SelectAll>>', self._on_platform_select_all, add='+')))
+
+        # 彻底封死只读/显示模式下的底层写操作虚拟事件
+        for write_event in ('<<Paste>>', '<<Cut>>', '<<Clear>>', '<<Undo>>', '<<Redo>>', '<<PasteSelection>>'):
+            self._internal_bind_ids.append((self._tk_text, write_event, self._tk_text.bind(write_event, self._block_modify_events, add='+')))
+
+        self._internal_bind_ids.append((self._tk_frame_b, '<MouseWheel>', self._tk_frame_b.bind('<MouseWheel>', self._on_mouse_wheel, add='+')))
+        self._add_parent_to_bindtags(self._tk_text, self._tk_frame_b)
+
+        self._internal_bind_ids.append((self._scrollbar._tk_canvas, '<Enter>', self._scrollbar._tk_canvas.bind('<Enter>', self._on_scrollbar_enter, add='+')))
+        self._internal_bind_ids.append((self._scrollbar._tk_canvas, '<Leave>', self._scrollbar._tk_canvas.bind('<Leave>', self._on_scrollbar_leave, add='+')))
+
+    def _block_modify_events(self, event):
+        """当处于非可编辑模式时，彻底截断任何虚拟修改事件"""
+        if self._text_mode in (TextMode.Readonly, TextMode.Display, TextMode.Disable) or (self._text_mode == TextMode.Label and not self._copyable):
+            return 'break'
+
+    def _add_parent_to_bindtags(self, widget, parent):
+        try:
+            current_tags = widget.bindtags()
+            if parent not in current_tags:
+                new_tags = list(current_tags)
+                new_tags.insert(1, parent)
+                widget.bindtags(tuple(new_tags))
+        except Exception:
+            pass
+
+    def _config_styles(self):
+        current_state = self.styles.get_style()
+        styles_dict = {
+            'normal': {
+                'bg': current_state.component.text.normal.bg.color,
+                'fg': current_state.component.label.fg.color,
+                'font': current_state.font.normal,
+                'border': current_state.component.text.normal.border.color
+            },
+            'hover': {
+                'bg': current_state.component.text.hover.bg.color,
+                'fg': current_state.component.text.hover.fg.color,
+                'border': current_state.component.text.hover.border.color
+            },
+            'active': {
+                'bg': current_state.component.text.hover.bg.color,
+                'fg': current_state.component.text.hover.fg.color,
+                'border': current_state.component.text.hover.border.color
+            },
+            'focus': {
+                'bg': current_state.component.button.secondary.hover.bg.color,
+                'fg': current_state.component.label.fg.color,
+                'border': current_state.component.text.focus.border.color
+            },
+            'disable': {
+                'bg': current_state.component.text.disable.bg.color,
+                'fg': current_state.component.text.disable.fg.color,
+                'border': current_state.component.text.disable.border.color
+            },
+            'selected_font': {
+                'bg': current_state.component.text.selected_font.bg.color,
+                'fg': current_state.component.text.selected_font.fg.color
+            }
+        }
+        self._styles = StyleObject(styles_dict)
+
+    def _update_styles(self):
+        style_key = (self._text_mode, self._interaction_state)
+        if getattr(self, '_last_style_key', None) == style_key:
+            return
+        self._last_style_key = style_key
+
+        takefocus_val = 0
+        cursor = 'xterm'
+        tk_state = 'normal'
+
+        if self._text_mode == TextMode.Disable:
+            cursor, tk_state = 'no', 'disabled'
+            style = self._styles.disable
+        elif self._text_mode == TextMode.Display:
+            cursor, tk_state = 'arrow', 'disabled'
+            style = self._styles.normal
+        elif self._text_mode == TextMode.Label:
+            if self._selectable:
+                cursor, tk_state = 'xterm', 'normal'  # 保持 normal 以托管丝滑选择
+            else:
+                cursor, tk_state = 'arrow', 'disabled'
+            style = self._styles.normal
+        elif self._text_mode == TextMode.Readonly:
+            cursor, tk_state = 'xterm', 'normal'  # 核心改动：保持 normal 状态以托管原生优雅选区
+            if self._interaction_state == TextInteractionState.Focus:
+                style = self._styles.focus
+            elif self._interaction_state == TextInteractionState.Hover:
+                style = self._styles.hover
+            elif self._interaction_state == TextInteractionState.Active:
+                style = self._styles.active
+            else:
+                style = self._styles.normal
+        else:  # Normal
+            cursor, tk_state = 'xterm', 'normal'
+            if self._interaction_state == TextInteractionState.Focus:
+                style = self._styles.focus
+            elif self._interaction_state == TextInteractionState.Hover:
+                style = self._styles.hover
+            elif self._interaction_state == TextInteractionState.Active:
+                style = self._styles.active
+            else:
+                style = self._styles.normal
+
+        if self._text_mode == TextMode.Disable:
+            frame_takefocus = 0
+        elif self._text_mode == TextMode.Label:
+            frame_takefocus = 1 if (self._selectable or self._scrollbar_visible is True) else 0
+        else:
+            frame_takefocus = 1
+
+        struct_key = (self._text_mode, self._show_frame_decoration)
+        struct_changed = getattr(self, '_last_struct_key', None) != struct_key
+        if struct_changed:
+            self._last_struct_key = struct_key
+            if self._show_frame_decoration:
+                self._tk_frame.config(highlightbackground=style.border, highlightcolor=self._styles.focus.border, highlightthickness=1)
+                self._tk_frame_b.config(padx=self._padx, pady=self._pady)
+            else:
+                self._tk_frame.config(highlightbackground=style.bg, highlightcolor=style.bg, highlightthickness=0)
+                self._tk_frame_b.config(padx=0, pady=0)
+
+        if self._show_frame_decoration:
+            self._tk_frame.config(bg=style.bg, takefocus=frame_takefocus, highlightbackground=style.border, highlightcolor=self._styles.focus.border)
+        else:
+            self._tk_frame.config(bg=style.bg, takefocus=frame_takefocus, highlightbackground=style.bg, highlightcolor=style.bg)
+        self._tk_frame_b.config(bg=style.bg, cursor=cursor)
+
+        # 只读模式下可以通过控制 insertwidth=0 或隐去光标颜色，隐藏闪烁插入标，保证扁平设计纯净度
+        show_caret = (self._text_mode == TextMode.Normal)
+        self._tk_text.config(
+            state='normal',
+            bg=style.bg,
+            fg=style.fg,
+            cursor=cursor,
+            takefocus=takefocus_val,
+            insertbackground=style.fg if show_caret else style.bg,
+            insertwidth=2 if show_caret else 0,
+            selectbackground=self._styles.selected_font.bg,
+            selectforeground=self._styles.selected_font.fg,
+        )
+
+        if self._scrollbar is not None:
+            self._scrollbar.set_disabled(self._text_mode == TextMode.Disable)
+
+        if struct_changed:
+            self._tk_frame.update_idletasks()
+            self._update_scrollbar_state()
+            if self._scrollbar_visible:
+                self._force_scrollbar_position()
+
+        if tk_state == 'disabled':
+            self._tk_text.config(state='disabled')
+
+    def _sync_scrollbar(self, *args):
+        if not hasattr(self, '_scrollbar') or self._scrollbar is None:
+            return
+        if len(args) == 2:
+            try:
+                start = float(args[0])
+                end = float(args[1])
+                if self._scrollbar_visible or self._scrollbar_mode == ScrollbarMode.Always:
+                    self._scrollbar.set_position(start, end)
+            except (ValueError, tk.TclError):
+                pass
+
+    def _on_scrollbar_scroll(self, fraction):
+        try:
+            self._tk_text.yview_moveto(fraction)
+        except tk.TclError:
+            pass
+
+    def _on_scrollbar_click(self, event):
+        self.focus_set()
+
+    def _force_scrollbar_position(self):
+        try:
+            if self._scrollbar is not None and self._scrollbar_visible:
+                yv = self._tk_text.yview()
+                if len(yv) == 2:
+                    self._scrollbar.set_position(float(yv[0]), float(yv[1]))
+        except (tk.TclError, ValueError):
+            pass
+
+    def _on_mouse_wheel(self, event):
+        if not self._mouse_inside:
+            return
+        if self._text_mode == TextMode.Disable:
+            return 'break'
+        try:
+            yview = self._tk_text.yview()
+            if len(yview) != 2:
+                return
+            content_exceeds = not (yview[0] <= 0.001 and yview[1] >= 0.999)
+            if not content_exceeds:
+                return
+            if self._text_mode not in (TextMode.Display, TextMode.Label):
+                self.focus_set()
+            self._tk_text.yview_scroll(-1 * (event.delta // 120), 'units')
+            self._on_scroll_event.broadcast(event)
+            return 'break'
+        except tk.TclError:
+            pass
+
+    def _update_scrollbar_state(self, *args):
+        if not hasattr(self, '_scrollbar') or self._scrollbar is None:
+            return
+        try:
+            yview = self._tk_text.yview()
+            if len(yview) != 2:
+                return
+            content_exceeds = not (yview[0] <= 0.001 and yview[1] >= 0.999)
+        except tk.TclError:
+            content_exceeds = False
+
+        needs_show = False
+        if self._scrollbar_mode == ScrollbarMode.Always:
+            needs_show = True
+        elif self._scrollbar_mode == ScrollbarMode.Never:
+            needs_show = False
+        elif self._scrollbar_mode == ScrollbarMode.Auto:
+            needs_show = content_exceeds
+
+        if needs_show and self._scrollbar_visible is not True:
+            self._tk_frame_b.pack_forget()
+            self._scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            self._tk_frame_b.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            self._scrollbar_visible = True
+        elif not needs_show and self._scrollbar_visible is not False:
+            if self._scrollbar_visible is True:
+                self._scrollbar.pack_forget()
+            else:
+                self._tk_frame_b.pack_forget()
+                self._tk_frame_b.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            self._scrollbar_visible = False
+
+        if self._scrollbar_visible and self._has_focus():
+            if self._text_mode in (TextMode.Readonly, TextMode.Display, TextMode.Label):
+                if self._scrollbar is not None:
+                    self._scrollbar.set_state(ScrollbarState.Prefocus)
+        elif not self._scrollbar_visible and self._scrollbar is not None:
+            self._scrollbar.set_state(ScrollbarState.Normal)
+
+        if self._scrollbar_visible:
+            self._tk_frame.after_idle(self._force_scrollbar_position)
+
+    def _on_text_modified_internal(self, event):
+        try:
+            if self._tk_text.edit_modified():
+                self._tk_text.edit_modified(False)
+                content = self._tk_text.get('1.0', 'end-1c')
+                self.on_text_changed.broadcast(content)
+                self._update_scrollbar_state()
+        except tk.TclError:
+            pass
+
+    def _on_focus_in_internal(self, event):
+        if self._text_mode == TextMode.Disable:
+            self._tk_frame.after_idle(self._deflect_focus)
+            return "break"
+        if self._text_mode == TextMode.Label and not self._selectable:
+            if self._scrollbar_visible is not True:
+                self._tk_frame.after_idle(self._deflect_focus)
+                return "break"
+        previous = self._interaction_state
+        self._interaction_state = TextInteractionState.Focus
+        if self._interaction_state != previous:
+            self._update_styles()
+        if self._tk_frame.focus_get() != self._tk_text:
+            self._tk_text.focus_set()
+        if self._text_mode in (TextMode.Readonly, TextMode.Display, TextMode.Label):
+            if self._scrollbar_visible and self._scrollbar is not None:
+                self._scrollbar.set_state(ScrollbarState.Prefocus)
+        self.on_focus_in.broadcast()
+
+    def _on_focus_out_internal(self, event):
+        self._tk_frame.after_idle(self._check_focus_loss)
+
+    def _check_focus_loss(self):
+        if self._has_focus():
+            return
+        if self._text_mode != TextMode.Disable:
+            previous = self._interaction_state
+            self._interaction_state = TextInteractionState.Idle
+            if self._interaction_state != previous:
+                self._update_styles()
+        if self._scrollbar is not None:
+            self._scrollbar.set_state(ScrollbarState.Normal)
+        self._clear_selection()
+        self.on_focus_out.broadcast()
+
+    def _has_focus(self):
+        try:
+            focused = self._tk_frame.focus_get()
+            return focused in (self._tk_frame, self._tk_text, self._tk_frame_b)
+        except Exception:
+            return False
+
+    def _clear_selection(self):
+        if not hasattr(self, '_tk_text') or self._tk_text is None:
+            return
+        try:
+            prev_state = self._tk_text.cget('state')
+            if prev_state == 'disabled':
+                self._tk_text.config(state='normal')
+            self._tk_text.tag_remove('sel', '1.0', tk.END)
+            if prev_state == 'disabled':
+                self._tk_text.config(state='disabled')
+        except tk.TclError:
+            pass
+
+    def _deflect_focus(self):
+        try:
+            curr = self._tk_frame
+            while True:
+                nxt = curr.tk_focusNext()
+                if not nxt or nxt == self._tk_frame:
+                    break
+                if nxt not in (self._tk_frame, self._tk_text, self._tk_frame_b):
+                    nxt.focus_set()
+                    break
+                curr = nxt
+        except tk.TclError:
+            pass
+
+    def _on_tab_internal(self, event):
+        self._on_tab_block_event.broadcast('tab')
+        if self._block_tab:
+            return 'break'
+
+        if self._text_mode in (TextMode.Readonly, TextMode.Display, TextMode.Label):
+            try:
+                curr = self._tk_text
+                while True:
+                    nxt = curr.tk_focusNext()
+                    if not nxt or nxt == self._tk_text:
+                        break
+                    if nxt not in (self._tk_frame, self._tk_text, self._tk_frame_b):
+                        nxt.focus_set()
+                        break
+                    curr = nxt
+            except tk.TclError:
+                pass
+            return 'break'
+
+        try:
+            self._tk_text.insert(tk.INSERT, '\t')
+        except tk.TclError:
+            pass
+        return 'break'
+
+    def _on_shift_tab_internal(self, event):
+        self._on_tab_block_event.broadcast('shift_tab')
+        if self._block_tab:
+            return 'break'
+
+        if self._text_mode in (TextMode.Readonly, TextMode.Display, TextMode.Label):
+            try:
+                curr = self._tk_text
+                while True:
+                    prev = curr.tk_focusPrev()
+                    if not prev or prev == self._tk_text:
+                        break
+                    if prev not in (self._tk_frame, self._tk_text, self._tk_frame_b):
+                        prev.focus_set()
+                        break
+                    curr = prev
+            except tk.TclError:
+                pass
+            return 'break'
+
+    def _on_ctrl_tab_internal(self, event):
+        try:
+            curr = self._tk_text
+            while True:
+                nxt = curr.tk_focusNext()
+                if not nxt or nxt == self._tk_text:
+                    break
+                if nxt not in (self._tk_frame, self._tk_text, self._tk_frame_b):
+                    nxt.focus_set()
+                    break
+                curr = nxt
+        except tk.TclError:
+            pass
+        return 'break'
+
+    def _on_ctrl_shift_tab_internal(self, event):
+        try:
+            curr = self._tk_text
+            while True:
+                prev = curr.tk_focusPrev()
+                if not prev or prev == self._tk_text:
+                    break
+                if prev not in (self._tk_frame, self._tk_text, self._tk_frame_b):
+                    prev.focus_set()
+                    break
+                curr = prev
+        except tk.TclError:
+            pass
+        return 'break'
+
+    def set_block_tab(self, block):
+        self._block_tab = block
+
+    def _on_enter_internal(self, event):
+        self._mouse_inside = True
+        if self._text_mode == TextMode.Disable:
+            return
+        if self._text_mode in (TextMode.Display, TextMode.Label) and not self._selectable:
+            return
+        previous = self._interaction_state
+        if self._has_focus():
+            self._interaction_state = TextInteractionState.Focus
+        else:
+            self._interaction_state = TextInteractionState.Hover
+        if self._interaction_state != previous:
+            self._update_styles()
+        self._on_enter_event.broadcast(event)
+
+    def _on_scrollbar_enter(self, event):
+        self._mouse_inside = True
+
+    def _on_scrollbar_leave(self, event):
+        self._mouse_inside = False
+
+    def _on_leave_internal(self, event):
+        self._mouse_inside = False
+        if self._text_mode in (TextMode.Disable, TextMode.Display, TextMode.Label) and not self._selectable:
+            return
+        if not self._has_focus():
+            self._interaction_state = TextInteractionState.Idle
+            self._update_styles()
+        self._on_leave_event.broadcast(event)
+
+    def _text_rel_xy(self, event):
+        return (event.x_root - self._tk_text.winfo_rootx(),
+                event.y_root - self._tk_text.winfo_rooty())
+
+    def _on_press_internal(self, event):
+        if self._text_mode == TextMode.Disable:
+            return 'break'
+        if self._text_mode == TextMode.Display:
+            return 'break'
+        if self._text_mode == TextMode.Label and not self._selectable:
+            return 'break'
+
+        # 只读模式及Label可选现在完全托管给原生选择流，无需手动进行 tag_add 计算
+        if not self._has_focus():
+            if self._text_mode not in (TextMode.Readonly, TextMode.Label):
+                self._interaction_state = TextInteractionState.Active
+            self._update_styles()
+        self._on_press_event.broadcast(event)
+
+        if event.widget == self._tk_frame_b:
+            self.focus_set()
+            text_x, text_y = self._text_rel_xy(event)
+            text_y = max(0, min(text_y, self._tk_text.winfo_height() - 1))
+            if self._text_mode in (TextMode.Normal, TextMode.Readonly) or (self._text_mode == TextMode.Label and self._selectable):
+                try:
+                    idx = self._tk_text.index(f'@{text_x},{text_y}')
+                    self._tk_text.mark_set('insert', idx)
+                    self._tk_text.tag_remove('sel', '1.0', tk.END)
+                except tk.TclError:
+                    pass
+
+    def _on_release_internal(self, event):
+        if self._text_mode == TextMode.Disable:
+            return 'break'
+        if self._text_mode == TextMode.Display:
+            return 'break'
+        if self._text_mode == TextMode.Label and not self._selectable:
+            return 'break'
+
+        if self._has_focus():
+            self._interaction_state = TextInteractionState.Focus
+        else:
+            self._interaction_state = TextInteractionState.Hover
+        self._update_styles()
+        self._on_release_event.broadcast(event)
+
+    def _on_motion_internal(self, event):
+        if self._text_mode == TextMode.Disable:
+            return 'break'
+        if self._text_mode == TextMode.Display:
+            return 'break'
+        if self._text_mode == TextMode.Label and not self._selectable:
+            return 'break'
+        # 移除了所有冗余的多 Bug 选区计算，原生选择机制自动完美处理拖拽、缩小和自动边缘滚动
+        self._on_motion_event.broadcast(event)
+
+    def _on_platform_copy(self, event):
+        if self._text_mode == TextMode.Label and not self._copyable:
+            return 'break'
+        if self._text_mode in (TextMode.Display, TextMode.Disable):
+            return 'break'
+        # 放行 Readonly 和 Normal，让原生类绑定将内容送入剪贴板
+        return
+
+    def _on_platform_select_all(self, event):
+        if self._text_mode in (TextMode.Readonly, TextMode.Normal) or (self._text_mode == TextMode.Label and self._selectable):
+            try:
+                self._tk_text.tag_add('sel', '1.0', 'end')
+            except tk.TclError:
+                pass
+            return 'break'
+        return 'break'
+
+    def _on_key_press_internal(self, event):
+        # 1. 彻底封死不可交互组件
+        if self._text_mode in (TextMode.Disable, TextMode.Display) or (self._text_mode == TextMode.Label and not self._selectable):
+            return "break"
+
+        # 2. 精细控制只读与标签可选交互
+        if self._text_mode == TextMode.Readonly or (self._text_mode == TextMode.Label and self._selectable):
+            # 获取跨平台操作系统修饰键
+            is_ctrl = (event.state & 0x0004) or (event.state & 0x0008)
+
+            # 放行复制与全选组合键
+            if is_ctrl and event.keysym.lower() in ('c', 'a'):
+                return
+
+            # 放行原生导航及 Shift 键盘文本选择矩阵
+            nav_keys = ('Up', 'Down', 'Left', 'Right', 'Page_Up', 'Page_Down', 'Home', 'End', 'Prior', 'Next')
+            if event.keysym in nav_keys:
+                return
+
+            # 放行单独的修饰键按压
+            modifier_keys = ('Control_L', 'Control_R', 'Shift_L', 'Shift_R', 'Alt_L', 'Alt_R', 'Command_L', 'Command_R')
+            if event.keysym in modifier_keys:
+                return
+
+            # 拦截任何输入、修改、删除或空隙操作（如 Backspace, Delete, Enter 等）
+            return "break"
+
+        self._on_key_press_event.broadcast(event.char, event.keysym)
+
+    def _on_configure_internal(self, event):
+        self._update_scrollbar_state()
+        self._on_configure_event.broadcast(event)
+
+    def _on_double_click_internal(self, event):
+        if self._text_mode == TextMode.Disable:
+            return 'break'
+        if self._text_mode == TextMode.Display:
+            return 'break'
+        if self._text_mode == TextMode.Label and not self._selectable:
+            return 'break'
+        # 托管给原生处理：双击自动精准选词，后续拖动按词优雅流式扩展
+        self._on_double_click_event.broadcast(event)
+
+    def _on_triple_click_internal(self, event):
+        if self._text_mode == TextMode.Disable:
+            return 'break'
+        if self._text_mode == TextMode.Display:
+            return 'break'
+        if self._text_mode == TextMode.Label and not self._selectable:
+            return 'break'
+        # 托管给原生处理：三击精准选择整行，后续拖动按行流式扩展
+        self._on_triple_click_event.broadcast(event)
+
+    def _register_listeners(self):
+        self.styles.on_theme_changed.add_listener(self._on_theme_changed_internal)
+        self.localization.on_language_changed.add_listener(self._on_language_changed_internal)
+
+    def _unregister_listeners(self):
+        self.styles.on_theme_changed.remove_listener(self._on_theme_changed_internal)
+        self.localization.on_language_changed.remove_listener(self._on_language_changed_internal)
+
+    def _on_theme_changed_internal(self, theme):
+        self._config_styles()
+        self.refresh()
+
+    def _on_language_changed_internal(self, language):
+        if self._text is not None:
+            self.set_text(self._text)
+
+    def _unbind_internal_events(self):
+        for widget, sequence, funcid in self._internal_bind_ids:
+            try:
+                widget.unbind(sequence, funcid)
+            except:
+                pass
+        self._internal_bind_ids.clear()
+
+    def _on_destroy(self):
+        self._unregister_listeners()
+        self._unbind_internal_events()
+        if self._scrollbar:
+            self._scrollbar.destroy()
+        super()._on_destroy()
+
+    def set_mode(self, mode):
+        if not isinstance(mode, TextMode):
+            raise TypeError("mode 参数必须 be TextMode 枚举类型")
+        if mode == self._text_mode:
+            return
+
+        prev_state = self._text_mode
+        self._text_mode = mode
+
+        if mode == TextMode.Label:
+            self._show_frame_decoration = False
+            self._selectable = False
+            self._copyable = False
+        elif prev_state == TextMode.Label:
+            self._show_frame_decoration = True
+
+        if mode in (TextMode.Display, TextMode.Disable) or (mode == TextMode.Label and not self._selectable):
+            self._clear_selection()
+
+        if mode in (TextMode.Disable, TextMode.Label):
+            if self._has_focus():
+                self._deflect_focus()
+
+        self.refresh()
+
+    def set_disabled(self, disabled):
+        self.set_mode(TextMode.Disable if disabled else TextMode.Normal)
+
+    def set_selectable(self, selectable):
+        self._selectable = bool(selectable)
+        if self._text_mode == TextMode.Label:
+            if not selectable:
+                self._clear_selection()
+            self.refresh()
+
+    def set_copyable(self, copyable):
+        self._copyable = bool(copyable)
+        if self._text_mode == TextMode.Label:
+            self.refresh()
+
+    def get_mode(self):
+        return self._text_mode
+
+    def set_scrollbar_mode(self, mode):
+        if not isinstance(mode, ScrollbarMode):
+            raise TypeError("mode 参数必须是 ScrollbarMode 枚举类型")
+        self._scrollbar_mode = mode
+        self._update_scrollbar_state()
+
+    def set_wrap_mode(self, mode):
+        if not isinstance(mode, TextWrapMode):
+            raise TypeError("mode 参数必须是 TextWrapMode 枚举类型")
+        self._wrap_mode = mode
+        self._tk_text.config(wrap=mode.to_tk())
+
+    def is_disabled(self):
+        return self._text_mode == TextMode.Disable
+
+    def set_frame_decoration(self, enabled):
+        self._show_frame_decoration = bool(enabled)
+        self.refresh()
+
+    def refresh(self):
+        self._interaction_state = TextInteractionState.Focus if self._has_focus() else TextInteractionState.Idle
+        if hasattr(self, '_last_style_key'):
+            del self._last_style_key
+        if hasattr(self, '_last_struct_key'):
+            del self._last_struct_key
+        self._update_styles()
+        self._update_scrollbar_state()
+
+    def focus_set(self):
+        if self._text_mode == TextMode.Disable:
+            return
+        if self._text_mode == TextMode.Label and not self._selectable:
+            if self._scrollbar_visible is not True:
+                return
+        self._tk_frame.focus_set()
+
+    def tag_configure(self, tagName, **kwargs):
+        self._tk_text.tag_configure(tagName, **kwargs)
+
+    def tag_add(self, tagName, index1, index2=None):
+        curr_state = self._tk_text.cget('state')
+        if curr_state == 'disabled':
+            self._tk_text.config(state='normal')
+            self._tk_text.tag_add(tagName, index1, index2)
+            self._tk_text.config(state='disabled')
+        else:
+            self._tk_text.tag_add(tagName, index1, index2)
+
+    def tag_remove(self, tagName, index1, index2=None):
+        curr_state = self._tk_text.cget('state')
+        if curr_state == 'disabled':
+            self._tk_text.config(state='normal')
+            self._tk_text.tag_remove(tagName, index1, index2)
+            self._tk_text.config(state='disabled')
+        else:
+            self._tk_text.tag_remove(tagName, index1, index2)
+
+    def tag_delete(self, tagName):
+        curr_state = self._tk_text.cget('state')
+        if curr_state == 'disabled':
+            self._tk_text.config(state='normal')
+            self._tk_text.tag_delete(tagName)
+            self._tk_text.config(state='disabled')
+        else:
+            self._tk_text.tag_delete(tagName)
+
+    def tag_raise(self, tagName, aboveThis=None):
+        self._tk_text.tag_raise(tagName, aboveThis)
+
+    def tag_lower(self, tagName, belowThis=None):
+        self._tk_text.tag_lower(tagName, belowThis)
+
+    def tag_names(self, index=None):
+        return self._tk_text.tag_names(index)
+
+    def tag_ranges(self, tagName):
+        return self._tk_text.tag_ranges(tagName)
+
+    def get(self, index1, index2=None):
+        return self._tk_text.get(index1, index2)
+
+    def insert(self, index, text):
+        curr_state = self._tk_text.cget('state')
+        if curr_state == 'disabled':
+            self._tk_text.config(state='normal')
+            self._tk_text.insert(index, text)
+            self._tk_text.config(state='disabled')
+        else:
+            self._tk_text.insert(index, text)
+
+    def delete(self, index1, index2=None):
+        curr_state = self._tk_text.cget('state')
+        if curr_state == 'disabled':
+            self._tk_text.config(state='normal')
+            self._tk_text.delete(index1, index2)
+            self._tk_text.config(state='disabled')
+        else:
+            self._tk_text.delete(index1, index2)
+
+    def set_text(self, text):
+        if text is not None and not isinstance(text, LocalizedText):
+            raise TypeError("text 参数必须是 LocalizedText 类型")
+
+        self._text = text
+        display_text = text.get_text() if text else ""
+
+        current_state = self._tk_text.cget('state')
+        if current_state == 'disabled':
+            self._tk_text.config(state='normal')
+        self._tk_text.delete('1.0', tk.END)
+        self._tk_text.insert('1.0', display_text)
+        self._tk_text.edit_modified(False)
+        if current_state == 'disabled':
+            self._tk_text.config(state='disabled')
+
+    def see(self, index):
+        return self._tk_text.see(index)
+
+    def index(self, index):
+        return self._tk_text.index(index)
+
+    def get_line_count(self):
+        try:
+            result = self._tk_text.count('1.0', 'end', 'displaylines')
+            if isinstance(result, tuple):
+                return result[0] if result else 1
+            return result if result else 1
+        except tk.TclError:
+            return 1
+
+    def get_content_text(self):
+        try:
+            return self._tk_text.get('1.0', 'end-1c')
+        except tk.TclError:
+            return ""
+
+    def set_width(self, chars):
+        if self._tk_text:
+            self._tk_text.config(width=max(1, int(chars)))
+
+    def set_line_height(self, lines):
+        if self._tk_text:
+            self._tk_text.config(height=max(1, int(lines)))

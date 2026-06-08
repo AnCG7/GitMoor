@@ -1,4 +1,5 @@
 import tkinter as tk
+import tkinter.font as tkfont
 from ..core.window import Window
 from ..core.application import App
 from ..core.utils.utils import Utils
@@ -6,7 +7,8 @@ from .label import Label
 from .frame import Frame
 from .normal_button import NormalButton, ButtonStyleType
 from ..core.manager.localization_manager import LocalizedText
-from .scrollbar import Scrollbar, Orientation
+from .text import Text, TextMode, TextWrapMode
+from .scroll_listbox import ScrollbarMode
 
 
 class Alert(Window):
@@ -24,7 +26,6 @@ class Alert(Window):
         self._button_frame = None
         self._root_tk = None
         self._internal_bind_ids = []
-        self._scrollable = False
         self._setup_content()
         self._enable_center_tracking()
 
@@ -37,12 +38,13 @@ class Alert(Window):
         self._tk_window.protocol("WM_DELETE_WINDOW", self.close)
 
     def _setup_content(self):
+        # 缩减内边距（padx 20→12, pady 20→16），为文本和滚动条释放横向空间
         self._container = Frame(self)
-        self._container.pack(fill='both', expand=True, padx=20, pady=20)
+        self._container.pack(fill='both', expand=True, padx=12, pady=16)
 
         # 将按钮容器独立放在底部，保证永远可见
         self._button_frame = Frame(self._container)
-        self._button_frame.pack(side='bottom', fill='x', pady=(15, 0))
+        self._button_frame.pack(side='bottom', fill='x', pady=(12, 0))
 
         # 中间内容区域包装，支持小内容居中或大内容滚动
         self._center_wrapper = Frame(self._container)
@@ -54,136 +56,108 @@ class Alert(Window):
         title_font = self._styles.get_style().font.title
         self._title_label = Label(self._center_wrapper, text=self._title, font=title_font, anchor="center", justify=tk.CENTER)
         
-        self._content_area = Frame(self._center_wrapper)
-        
-        # 滚动区域设置
-        self._canvas = tk.Canvas(self._content_area.get_root_tk(), highlightthickness=0, borderwidth=0)
-        self._scrollbar = Scrollbar(self._content_area, orientation=Orientation.Vertical)
-        
-        bg_color = self._styles.get_style().component.frame.bg.color
-        self._canvas.config(bg=bg_color)
-        
-        self._canvas_frame = tk.Frame(self._canvas, background=bg_color)
-        self._canvas_window = self._canvas.create_window((0, 0), window=self._canvas_frame, anchor='nw')
+        # 使用 Text 组件（Label模式）替代 raw tk.Text + canvas + scrollbar
+        self._content_text = Text(
+            self._center_wrapper,
+            text=self._content,
+            wrap_mode=TextWrapMode.Char,
+            scrollbar_mode=ScrollbarMode.Never,
+        )
+        self._content_text.set_mode(TextMode.Label)
 
-        self._content_label = Label(self._canvas_frame, text=self._content, anchor="center", justify=tk.CENTER, responsive_wrap=True)
-        self._content_label.pack(fill='both', expand=True)
-
-        # 绑定滚动事件
-        self._canvas.config(yscrollcommand=self._sync_scrollbar)
-        self._scrollbar.on_scroll.add_listener(self._on_scrollbar_scroll)
-
-        self._internal_bind_ids.append((self._canvas_frame, "<Configure>", self._canvas_frame.bind("<Configure>", self._on_canvas_frame_configure, add='+')))
-        self._internal_bind_ids.append((self._canvas, "<Configure>", self._canvas.bind("<Configure>", self._on_canvas_configure, add='+')))
-
-        self._bind_mouse_wheel_events()
-
-    def _sync_scrollbar(self, first, last):
-        self._scrollbar.set_position(float(first), float(last))
-
-    def _on_scrollbar_scroll(self, fraction):
-        self._canvas.yview_moveto(fraction)
-
-    def _on_canvas_frame_configure(self, event):
-        self._canvas.configure(scrollregion=self._canvas.bbox("all"))
-
-    def _on_canvas_configure(self, event):
-        self._canvas.itemconfig(self._canvas_window, width=event.width)
-
-    def _bind_mouse_wheel_events(self):
-        widgets = [
-            self._canvas, 
-            self._canvas_frame, 
-            self._content_label.get_root_tk()
-        ]
-        for widget in widgets:
-            self._internal_bind_ids.append((widget, '<Enter>', widget.bind('<Enter>', self._on_enter_scroll_area, add='+')))
-            self._internal_bind_ids.append((widget, '<Leave>', widget.bind('<Leave>', self._on_leave_scroll_area, add='+')))
-            self._internal_bind_ids.append((widget, '<MouseWheel>', widget.bind('<MouseWheel>', self._on_mouse_wheel, add='+')))
-
-    def _on_enter_scroll_area(self, event):
-        self._mouse_inside = True
-
-    def _on_leave_scroll_area(self, event):
-        self._mouse_inside = False
-
-    def _on_mouse_wheel(self, event):
-        if not getattr(self, '_mouse_inside', False):
-            return
-        
-        # 如果高度没有超过最大值，强制禁止滚动行为
-        if not self._scrollable:
-            return
-            
-        yview = self._canvas.yview()
-        # 加入极小误差范围判断，避免浮点数或 1px 边距导致的微小滚动
-        if len(yview) == 2 and yview[0] <= 0.001 and yview[1] >= 0.999:
-            return
-            
-        delta = -1 if event.delta > 0 else 1
-        self._canvas.yview_scroll(delta, "units")
-        return "break"
+        # 预配置对齐标签
+        self._content_text.tag_configure('content_center', justify=tk.CENTER)
+        self._content_text.tag_configure('content_left', justify=tk.LEFT)
 
     def _adjust_size(self):
         self._tk_window.update_idletasks()
         
-        screen_height = self._tk_window.winfo_screenheight()
-        max_height = screen_height // 2
-        available_width = self._width - 40
+        # 基于宽度定制扁平化最大高度（360 * 0.72 ≈ 260px），视觉紧凑精致
+        max_height = int(self._width * 0.72)
+        # 配合 container 新 padx=12 计算可用宽度 (360 - 12*2 = 336)
+        available_width = self._width - 24
         
-        content_label = self._content_label.get_root_tk()
-        if hasattr(content_label, 'winfo_reqheight'):
-            content_label.config(wraplength=available_width)
-            
+        font_obj = tkfont.Font(font=self._styles.get_style().font.normal)
+        char_width = max(1, font_obj.measure('0'))
+        line_height_px = font_obj.metrics('linespace')
+        
+        # === 1. 临时 pack 获取准确行数 ===
+        # 必须 pack 后才能让 Tk 几何管理器分配像素宽度，否则 displaylines 返回错误值
+        self._content_text.set_width(max(1, int(available_width / char_width)))
+        self._content_text.pack(side='top', fill='x', pady=(8, 0))
+        self._content_text.set_line_height(1)
         self._tk_window.update_idletasks()
         
+        line_count = self._content_text.get_line_count()
+        
+        # 设置实际行数高度，测量 widget 真实 reqheight
+        self._content_text.set_line_height(line_count)
+        self._tk_window.update_idletasks()
+        content_req_h = self._content_text.get_root_tk().winfo_reqheight()
+        
+        # 测算完毕，解包
+        self._content_text.pack_forget()
+        
+        # === 2. 计算总高度，判断是否溢出 ===
         title_h = self._title_label.get_root_tk().winfo_reqheight()
         btn_h = self._button_frame.get_root_tk().winfo_reqheight()
-        content_req_h = self._canvas_frame.winfo_reqheight()
+        # fixed_h: container pady=16*2 + btn_pady=12 + content_pady=8
+        fixed_h = 32 + 12 + 8 + title_h + btn_h
+        total_req_height = fixed_h + content_req_h + 2  # +2 补偿窗口边框
         
-        # 计算所需固定区域及间距的高度: padx, pady=20(上下40) + btn的pady=15 + content的pady=8
-        fixed_h = 40 + 15 + 8 + title_h + btn_h
-        total_req_height = fixed_h + content_req_h
-        
-        # 重置布局避免重复计算或冲突
+        # 重置布局
         self._top_spacer.get_root_tk().pack_forget()
         self._bottom_spacer.get_root_tk().pack_forget()
         self._title_label.get_root_tk().pack_forget()
-        self._content_area.get_root_tk().pack_forget()
         
         if total_req_height > max_height:
             self._height = max_height
-            self._scrollable = True
+            # 溢出：Always 滚动条 + 窄宽度（预留滚动条空间）
+            self._content_text.set_scrollbar_mode(ScrollbarMode.Always)
             
-            self._scrollbar.pack(side='right', fill='y')
-            self._canvas.pack(side='left', fill='both', expand=True)
+            self._content_text.set_width(max(1, int((available_width - 15) / char_width)))
+            available_content_h = max_height - fixed_h
+            visible_lines = max(1, int(available_content_h / line_height_px))
+            self._content_text.set_line_height(visible_lines)
+            # pack_propagate(False) 防止内部 tk_text 随 expand 撑大
+            root_frame = self._content_text.get_root_tk()
+            root_frame.pack_propagate(False)
+            root_frame.configure(height=available_content_h)
             
-            # 为滚动条留出空间，重新计算自动换行
-            if hasattr(content_label, 'winfo_reqheight'):
-                content_label.config(wraplength=available_width - 15)
-                self._tk_window.update_idletasks()
-                
             self._title_label.pack(side='top', fill='x')
-            self._content_area.pack(side='top', fill='both', expand=True, pady=(8, 0))
-            
+            self._content_text.pack(side='top', fill='both', expand=True, pady=(8, 0))
         else:
-            self._height = max(total_req_height, 140)
-            self._scrollable = False
-            
-            self._scrollbar.pack_forget()
-            self._canvas.pack(side='left', fill='both', expand=True)
+            # 方案B：height = line_count + 1，让末尾隐藏 \n 也可见，使 yview() 返回 (0,1)
+            # Text 组件自身的 _on_mouse_wheel 检测到内容未溢出后会自然拦截滚轮
+            self._content_text.set_line_height(line_count + 1)
+            self._height = max(total_req_height + line_height_px, 140)
+            self._content_text.set_scrollbar_mode(ScrollbarMode.Never)
             
             self._top_spacer.pack(side='top', fill='both', expand=True)
             self._title_label.pack(side='top', fill='x')
-            self._content_area.pack(side='top', fill='x', expand=False, pady=(8, 0))
-            self._canvas.config(height=self._canvas_frame.winfo_reqheight())
+            self._content_text.pack(side='top', fill='x', expand=False, pady=(8, 0))
             self._bottom_spacer.pack(side='top', fill='both', expand=True)
-            
-        self._tk_window.update_idletasks()
-        self._canvas.configure(scrollregion=self._canvas.bbox("all"))
         
-        # 在高度计算完毕后，统一设置尺寸和位置实现居中，避免两次 geometry 导致闪烁
+        self._tk_window.update_idletasks()
+        self._apply_content_alignment()
         self._center_on_app()
+
+    def _apply_content_alignment(self):
+        """根据内容行数动态调整对齐方式：单行居中，多行左对齐"""
+        try:
+            text = self._content_text.get_content_text()
+            has_newlines = '\n' in text
+            line_count = self._content_text.get_line_count()
+            is_multiline = has_newlines or line_count > 1
+
+            if is_multiline:
+                self._content_text.tag_remove('content_center', '1.0', 'end')
+                self._content_text.tag_add('content_left', '1.0', 'end')
+            else:
+                self._content_text.tag_remove('content_left', '1.0', 'end')
+                self._content_text.tag_add('content_center', '1.0', 'end')
+        except Exception:
+            pass
 
     def _get_app_root_tk(self):
         app = App.get_instance()
@@ -223,12 +197,6 @@ class Alert(Window):
         super()._on_theme_changed_internal(theme)
         border_color = self._styles.get_style().component.window.overlay_border.color
         self._tk_window.config(highlightbackground=border_color, highlightcolor=border_color)
-        
-        bg_color = self._styles.get_style().component.frame.bg.color
-        if hasattr(self, '_canvas'):
-            self._canvas.config(bg=bg_color)
-        if hasattr(self, '_canvas_frame'):
-            self._canvas_frame.config(bg=bg_color)
 
     def add_button(self, button):
         button.on_click.add_listener(self.close)
