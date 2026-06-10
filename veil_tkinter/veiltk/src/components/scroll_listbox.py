@@ -5,7 +5,7 @@ from ..core.manager.ui_style_manager import UIStyleManager, StyleObject
 from ..core.manager.event_manager import Event
 from ..core.manager.localization_manager import LocalizedText
 from .listbox import ListBox
-from .scrollbar import Scrollbar, Orientation
+from .scrollbar import Scrollbar, Orientation, ScrollbarState
 
 class ScrollbarMode(Enum):
     Auto = "auto"
@@ -118,12 +118,15 @@ class ScrollListbox(View):
         if not self._disabled:
             self._tk_frame.config(highlightcolor=self._styles.focus.border)
             self.listbox._on_focus_in_internal(event)
+            if self._scrollbar_visible:
+                self.scrollbar.set_state(ScrollbarState.Focus)
             self.on_focus_in.broadcast(event)
 
     def _on_focus_out_internal(self, event):
         if not self._disabled:
             self._tk_frame.config(highlightbackground=self._styles.normal.border)
             self.listbox._on_focus_out_internal(event)
+            self.scrollbar.set_state(ScrollbarState.Normal)
             self.on_focus_out.broadcast(event)
 
     def _on_key_press_internal(self, event):
