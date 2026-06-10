@@ -1,5 +1,4 @@
 import tkinter as tk
-import tkinter.font as tkfont
 from ..core.window import Window
 from ..core.application import App
 from ..core.utils.utils import Utils
@@ -44,7 +43,7 @@ class Alert(Window):
 
         # 将按钮容器独立放在底部，保证永远可见
         self._button_frame = Frame(self._container)
-        self._button_frame.pack(side='bottom', fill='x', pady=(12, 0))
+        self._button_frame.pack(side='bottom', fill='x', pady=(8, 0))
 
         # 中间内容区域包装，支持小内容居中或大内容滚动
         self._center_wrapper = Frame(self._container)
@@ -55,7 +54,7 @@ class Alert(Window):
 
         title_font = self._styles.get_style().font.title
         self._title_label = Label(self._center_wrapper, text=self._title, font=title_font, anchor="center", justify=tk.CENTER)
-        
+
         # 使用 Text 组件（Label模式）替代 raw tk.Text + canvas + scrollbar
         self._content_text = Text(
             self._center_wrapper,
@@ -70,77 +69,68 @@ class Alert(Window):
         self._content_text.tag_configure('content_left', justify=tk.LEFT)
 
     def _adjust_size(self):
+        # 先隐藏窗口，避免布局计算过程中的中间状态被用户看到（消除闪烁）
+        self._tk_window.withdraw()
         self._tk_window.update_idletasks()
-        
+
         # 基于宽度定制扁平化最大高度（360 * 0.72 ≈ 260px），视觉紧凑精致
         max_height = int(self._width * 0.72)
-        # 配合 container 新 padx=12 计算可用宽度 (360 - 12*2 = 336)
-        available_width = self._width - 24
-        
-        font_obj = tkfont.Font(font=self._styles.get_style().font.normal)
-        char_width = max(1, font_obj.measure('0'))
-        line_height_px = font_obj.metrics('linespace')
-        
+
         # === 1. 临时 pack 获取准确行数 ===
         # 必须 pack 后才能让 Tk 几何管理器分配像素宽度，否则 displaylines 返回错误值
-        self._content_text.set_width(max(1, int(available_width / char_width)))
         self._content_text.pack(side='top', fill='x', pady=(8, 0))
-        self._content_text.set_line_height(1)
         self._tk_window.update_idletasks()
-        
+
         line_count = self._content_text.get_line_count()
-        
-        # 设置实际行数高度，测量 widget 真实 reqheight
-        self._content_text.set_line_height(line_count)
-        self._tk_window.update_idletasks()
-        content_req_h = self._content_text.get_root_tk().winfo_reqheight()
-        
+
+        # 通过测量 API 获取内容所需像素高度
+        content_req_h = self._content_text.get_height_for_lines(line_count)
+
         # 测算完毕，解包
         self._content_text.pack_forget()
-        
+
         # === 2. 计算总高度，判断是否溢出 ===
         title_h = self._title_label.get_root_tk().winfo_reqheight()
         btn_h = self._button_frame.get_root_tk().winfo_reqheight()
         # fixed_h: container pady=16*2 + btn_pady=12 + content_pady=8
-        fixed_h = 32 + 12 + 8 + title_h + btn_h
+        fixed_h = 32 + 8 + 8 + title_h + btn_h
         total_req_height = fixed_h + content_req_h + 2  # +2 补偿窗口边框
-        
+
         # 重置布局
         self._top_spacer.get_root_tk().pack_forget()
         self._bottom_spacer.get_root_tk().pack_forget()
         self._title_label.get_root_tk().pack_forget()
-        
+
         if total_req_height > max_height:
             self._height = max_height
-            # 溢出：Always 滚动条 + 窄宽度（预留滚动条空间）
+            # 溢出：Always 滚动条，父级像素控制高度
             self._content_text.set_scrollbar_mode(ScrollbarMode.Always)
-            
-            self._content_text.set_width(max(1, int((available_width - 15) / char_width)))
+
             available_content_h = max_height - fixed_h
-            visible_lines = max(1, int(available_content_h / line_height_px))
-            self._content_text.set_line_height(visible_lines)
-            # pack_propagate(False) 防止内部 tk_text 随 expand 撑大
-            root_frame = self._content_text.get_root_tk()
-            root_frame.pack_propagate(False)
-            root_frame.configure(height=available_content_h)
-            
+            # 父级直接通过 View 公开接口控制布局
+            self._content_text.pack_propagate(False)
+            self._content_text.configure(height=available_content_h)
+
             self._title_label.pack(side='top', fill='x')
             self._content_text.pack(side='top', fill='both', expand=True, pady=(8, 0))
         else:
-            # 方案B：height = line_count + 1，让末尾隐藏 \n 也可见，使 yview() 返回 (0,1)
-            # Text 组件自身的 _on_mouse_wheel 检测到内容未溢出后会自然拦截滚轮
-            self._content_text.set_line_height(line_count + 1)
-            self._height = max(total_req_height + line_height_px, 140)
+            # 未溢出：给 Text 多留一行像素高度，让末尾隐藏 \n 也可见，使 yview() 返回 (0,1)
+            content_height = self._content_text.get_height_for_lines(line_count + 1)
+            self._height = max(fixed_h + content_height + 2, 140)
             self._content_text.set_scrollbar_mode(ScrollbarMode.Never)
-            
+            self._content_text.pack_propagate(False)
+            self._content_text.configure(height=content_height)
+
             self._top_spacer.pack(side='top', fill='both', expand=True)
             self._title_label.pack(side='top', fill='x')
             self._content_text.pack(side='top', fill='x', expand=False, pady=(8, 0))
             self._bottom_spacer.pack(side='top', fill='both', expand=True)
-        
+
         self._tk_window.update_idletasks()
         self._apply_content_alignment()
         self._center_on_app()
+        # 布局完成后再显示窗口，避免闪烁
+        self._tk_window.deiconify()
 
     def _apply_content_alignment(self):
         """根据内容行数动态调整对齐方式：单行居中，多行左对齐"""
@@ -172,7 +162,7 @@ class Alert(Window):
         root_y = root_tk.winfo_y()
 
         offset_x, offset_y = Utils.center_rect(root_width, root_height, self._width, self._height)
-        
+
         # 将宽、高和坐标位置组合成一个 geometry 字符串，一次性生效
         self._tk_window.geometry(f"{self._width}x{self._height}+{root_x + offset_x}+{root_y + offset_y}")
 

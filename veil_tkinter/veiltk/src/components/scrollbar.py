@@ -1,13 +1,8 @@
 import tkinter as tk
-
 from enum import Enum
-
 from ..core.view import View
-
 from ..core.manager.ui_style_manager import UIStyleManager, StyleObject
-
 from ..core.manager.event_manager import Event
-
 
 
 class ScrollbarState(Enum):
@@ -44,10 +39,9 @@ class Scrollbar(View):
 
         self.styles = UIStyleManager.get_instance()
 
-        self.on_configure = Event()
         self.on_scroll = Event()
         self.on_click = Event()
-        
+
         super().__init__(master, **kwargs)
 
 
@@ -80,7 +74,7 @@ class Scrollbar(View):
         self._register_listeners()
         self.set_position(0.0, 1.0)
         self._update_cursor()
-        
+
         return self._tk_canvas
 
 
@@ -142,7 +136,6 @@ class Scrollbar(View):
 
     def _on_configure_internal(self, event):
         self.set_position(self._start, self._end)
-        self.on_configure.broadcast(event)
 
 
     def _on_button_press(self, event):
@@ -204,7 +197,6 @@ class Scrollbar(View):
 
 
     def _scroll_to(self, x, y):
-        self._tk_canvas.update_idletasks()
         w, h = self._tk_canvas.winfo_width(), self._tk_canvas.winfo_height()
         if self._orientation == Orientation.Vertical:
             fraction = y / h
@@ -248,8 +240,11 @@ class Scrollbar(View):
         self._start = start
         self._end = end
 
-        self._tk_canvas.update_idletasks()
         w, h = self._tk_canvas.winfo_width(), self._tk_canvas.winfo_height()
+        if w <= 1 or h <= 1:
+            # 尺寸尚未确定，延迟到 idle 时再更新
+            self._tk_canvas.after_idle(self._deferred_update_thumb)
+            return
 
         margin = self._thumb_margin
         if self._orientation == Orientation.Vertical:
@@ -258,6 +253,20 @@ class Scrollbar(View):
             self._tk_canvas.coords(self._thumb, start * w, margin, end * w, h - margin)
 
         self._update_thumb_color()
+
+    def _deferred_update_thumb(self):
+        try:
+            w, h = self._tk_canvas.winfo_width(), self._tk_canvas.winfo_height()
+            if w <= 1 or h <= 1:
+                return
+            margin = self._thumb_margin
+            if self._orientation == Orientation.Vertical:
+                self._tk_canvas.coords(self._thumb, margin, self._start * h, w - margin, self._end * h)
+            else:
+                self._tk_canvas.coords(self._thumb, self._start * w, margin, self._end * w, h - margin)
+            self._update_thumb_color()
+        except Exception:
+            pass
 
     def refresh_theme(self):
         self._update_thumb_color()

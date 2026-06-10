@@ -70,6 +70,10 @@ class Text(View):
         self._show_frame_decoration = True
         self._selectable = False
         self._copyable = False
+        self._layout_in_progress = False
+        self._last_text_width = None
+        self._last_text_height = None
+        self._scrollbar_stable = False
 
         # Events
         self.on_focus_in = Event()
@@ -102,6 +106,9 @@ class Text(View):
         self._padx = 4
         self._pady = size_preset['pady']
 
+        # 检测用户是否通过构造参数指定了像素尺寸（父级掌控布局）
+        has_fixed_size = 'height' in self._kwargs or 'width' in self._kwargs
+
         default_kwargs = {
             "bg": self._styles.normal.bg,
             "relief": tk.FLAT,
@@ -113,6 +120,10 @@ class Text(View):
         }
         default_kwargs.update(self._kwargs)
         self._tk_frame = tk.Frame(master_tk, **default_kwargs)
+
+        # 如果用户指定了像素尺寸，切断内部reqheight/reqwidth传播，确保父级掌控布局
+        if has_fixed_size:
+            self._tk_frame.pack_propagate(False)
 
         self._tk_frame_b = tk.Frame(
             self._tk_frame,
@@ -318,7 +329,9 @@ class Text(View):
         if self._text_mode == TextMode.Disable:
             frame_takefocus = 0
         elif self._text_mode == TextMode.Label:
-            frame_takefocus = 1 if (self._selectable or self._scrollbar_visible is True) else 0
+            frame_takefocus = 1 if (self._selectable or self._content_exceeds_view()) else 0
+        elif self._text_mode == TextMode.Display:
+            frame_takefocus = 1 if self._content_exceeds_view() else 0
         else:
             frame_takefocus = 1
 
@@ -357,7 +370,6 @@ class Text(View):
             self._scrollbar.set_disabled(self._text_mode == TextMode.Disable)
 
         if struct_changed:
-            self._tk_frame.update_idletasks()
             self._update_scrollbar_state()
             if self._scrollbar_visible:
                 self._force_scrollbar_position()
@@ -415,9 +427,10 @@ class Text(View):
         except tk.TclError:
             pass
 
-    def _update_scrollbar_state(self, *args):
+    def _update_scrollbar_state(self, *args, show_only=False):
         if not hasattr(self, '_scrollbar') or self._scrollbar is None:
             return
+
         try:
             yview = self._tk_text.yview()
             if len(yview) != 2:
@@ -435,17 +448,24 @@ class Text(View):
             needs_show = content_exceeds
 
         if needs_show and self._scrollbar_visible is not True:
+            self._layout_in_progress = True
             self._tk_frame_b.pack_forget()
             self._scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
             self._tk_frame_b.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
             self._scrollbar_visible = True
-        elif not needs_show and self._scrollbar_visible is not False:
+            self._scrollbar_stable = True
+            self._tk_frame.after_idle(self._clear_layout_flag)
+        elif not needs_show and self._scrollbar_visible is not False and not show_only:
+            # 只有非 show_only 调用（即内容变化/手动设置）才允许隐藏
+            self._layout_in_progress = True
             if self._scrollbar_visible is True:
                 self._scrollbar.pack_forget()
             else:
                 self._tk_frame_b.pack_forget()
                 self._tk_frame_b.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
             self._scrollbar_visible = False
+            self._scrollbar_stable = False
+            self._tk_frame.after_idle(self._clear_layout_flag)
 
         if self._scrollbar_visible and self._has_focus():
             if self._text_mode in (TextMode.Readonly, TextMode.Display, TextMode.Label):
@@ -455,7 +475,10 @@ class Text(View):
             self._scrollbar.set_state(ScrollbarState.Normal)
 
         if self._scrollbar_visible:
-            self._tk_frame.after_idle(self._force_scrollbar_position)
+            self._force_scrollbar_position()
+
+    def _clear_layout_flag(self):
+        self._layout_in_progress = False
 
     def _on_text_modified_internal(self, event):
         try:
@@ -467,12 +490,26 @@ class Text(View):
         except tk.TclError:
             pass
 
+    def _content_exceeds_view(self):
+        """判断内容是否超出可视区域（不依赖 scrollbar 是否可见）"""
+        try:
+            yview = self._tk_text.yview()
+            if len(yview) == 2:
+                return not (yview[0] <= 0.001 and yview[1] >= 0.999)
+        except tk.TclError:
+            pass
+        return False
+
     def _on_focus_in_internal(self, event):
         if self._text_mode == TextMode.Disable:
             self._tk_frame.after_idle(self._deflect_focus)
             return "break"
+        if self._text_mode == TextMode.Display:
+            if not self._content_exceeds_view():
+                self._tk_frame.after_idle(self._deflect_focus)
+                return "break"
         if self._text_mode == TextMode.Label and not self._selectable:
-            if self._scrollbar_visible is not True:
+            if not self._content_exceeds_view():
                 self._tk_frame.after_idle(self._deflect_focus)
                 return "break"
         previous = self._interaction_state
@@ -482,7 +519,7 @@ class Text(View):
         if self._tk_frame.focus_get() != self._tk_text:
             self._tk_text.focus_set()
         if self._text_mode in (TextMode.Readonly, TextMode.Display, TextMode.Label):
-            if self._scrollbar_visible and self._scrollbar is not None:
+            if self._content_exceeds_view() and self._scrollbar is not None:
                 self._scrollbar.set_state(ScrollbarState.Prefocus)
         self.on_focus_in.broadcast()
 
@@ -719,11 +756,25 @@ class Text(View):
         return 'break'
 
     def _on_key_press_internal(self, event):
-        # 1. 彻底封死不可交互组件
-        if self._text_mode in (TextMode.Disable, TextMode.Display) or (self._text_mode == TextMode.Label and not self._selectable):
+        # 1. Disable 模式彻底封死
+        if self._text_mode == TextMode.Disable:
             return "break"
 
-        # 2. 精细控制只读与标签可选交互
+        # 2. Display 模式和 Label（非 selectable）模式：只放行滚动导航键
+        if self._text_mode == TextMode.Display or (self._text_mode == TextMode.Label and not self._selectable):
+            if self._content_exceeds_view():
+                scroll_keys = ('Up', 'Down', 'Page_Up', 'Page_Down', 'Home', 'End', 'Prior', 'Next')
+                if event.keysym in scroll_keys:
+                    # 手动执行滚动，因为 Display/Label 模式下 tk_text 为 disabled 状态无法原生导航
+                    self._handle_keyboard_scroll(event)
+                    return "break"
+            # 放行单独的修饰键按压（避免无意义的 break 干扰）
+            modifier_keys = ('Control_L', 'Control_R', 'Shift_L', 'Shift_R', 'Alt_L', 'Alt_R', 'Command_L', 'Command_R')
+            if event.keysym in modifier_keys:
+                return
+            return "break"
+
+        # 3. 精细控制只读与标签可选交互
         if self._text_mode == TextMode.Readonly or (self._text_mode == TextMode.Label and self._selectable):
             # 获取跨平台操作系统修饰键
             is_ctrl = (event.state & 0x0004) or (event.state & 0x0008)
@@ -747,9 +798,42 @@ class Text(View):
 
         self._on_key_press_event.broadcast(event.char, event.keysym)
 
+    def _handle_keyboard_scroll(self, event):
+        """在 disabled 状态下手动处理键盘滚动"""
+        try:
+            keysym = event.keysym
+            if keysym == 'Up':
+                self._tk_text.yview_scroll(-1, 'units')
+            elif keysym == 'Down':
+                self._tk_text.yview_scroll(1, 'units')
+            elif keysym in ('Page_Up', 'Prior'):
+                self._tk_text.yview_scroll(-1, 'pages')
+            elif keysym in ('Page_Down', 'Next'):
+                self._tk_text.yview_scroll(1, 'pages')
+            elif keysym == 'Home':
+                self._tk_text.yview_moveto(0.0)
+            elif keysym == 'End':
+                self._tk_text.yview_moveto(1.0)
+            self._on_scroll_event.broadcast(event)
+        except tk.TclError:
+            pass
+
     def _on_configure_internal(self, event):
-        self._update_scrollbar_state()
-        self._on_configure_event.broadcast(event)
+        # 如果是自己 pack/pack_forget 导致的布局变化，只记录尺寸但不触发检查
+        w, h = event.width, event.height
+        if self._layout_in_progress:
+            self._last_text_width = w
+            self._last_text_height = h
+            return
+        # 只在实际尺寸变化时才检查 scrollbar 状态
+        if w == self._last_text_width and h == self._last_text_height:
+            return
+        self._last_text_width = w
+        self._last_text_height = h
+        # Configure 驱动的检查只允许「显示」scrollbar，不允许「隐藏」
+        # 隐藏只在内容变化时触发，避免布局震荡
+        self._update_scrollbar_state(show_only=True)
+        self._on_configure_event.broadcast(None)
 
     def _on_double_click_internal(self, event):
         if self._text_mode == TextMode.Disable:
@@ -877,7 +961,7 @@ class Text(View):
         if self._text_mode == TextMode.Disable:
             return
         if self._text_mode == TextMode.Label and not self._selectable:
-            if self._scrollbar_visible is not True:
+            if not self._content_exceeds_view():
                 return
         self._tk_frame.focus_set()
 
@@ -981,10 +1065,16 @@ class Text(View):
         except tk.TclError:
             return ""
 
-    def set_width(self, chars):
-        if self._tk_text:
-            self._tk_text.config(width=max(1, int(chars)))
+    def get_height_for_lines(self, lines):
+        """测量指定行数所需的像素高度（不改变组件状态，仅返回测量值）"""
+        if not self._tk_text:
+            return 0
+        import tkinter.font as tkfont
+        font_obj = tkfont.Font(font=self._tk_text.cget('font'))
+        line_height_px = font_obj.metrics('linespace')
+        # tk.Text 的 pady 会在上下各加一份
+        text_pady = int(self._tk_text.cget('pady'))
+        frame_pady = self._pady
+        # 总像素高度 = 行高 * 行数 + text内部pady*2 + frame_b的pady*2
+        return line_height_px * int(lines) + text_pady * 2 + frame_pady * 2
 
-    def set_line_height(self, lines):
-        if self._tk_text:
-            self._tk_text.config(height=max(1, int(lines)))
