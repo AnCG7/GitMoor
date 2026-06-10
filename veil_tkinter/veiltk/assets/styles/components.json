@@ -185,17 +185,10 @@
       "trough": "bg_color",
       "border": "border"
     },
-    "prefocus": {
-      "bg": "bg_color",
-      "fg": "fg_color",
-      "thumb": "scrollbar_prefocus",
-      "trough": "bg_color",
-      "border": "border"
-    },
     "focus": {
       "bg": "bg_color",
       "fg": "fg_color",
-      "thumb": "scrollbar_hover",
+      "thumb": "scrollbar_focus",
       "trough": "bg_color",
       "border": "border"
     },

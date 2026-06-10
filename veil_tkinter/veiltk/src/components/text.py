@@ -470,7 +470,7 @@ class Text(View):
         if self._scrollbar_visible and self._has_focus():
             if self._text_mode in (TextMode.Readonly, TextMode.Display, TextMode.Label):
                 if self._scrollbar is not None:
-                    self._scrollbar.set_state(ScrollbarState.Prefocus)
+                    self._scrollbar.set_state(ScrollbarState.Focus)
         elif not self._scrollbar_visible and self._scrollbar is not None:
             self._scrollbar.set_state(ScrollbarState.Normal)
 
@@ -520,7 +520,7 @@ class Text(View):
             self._tk_text.focus_set()
         if self._text_mode in (TextMode.Readonly, TextMode.Display, TextMode.Label):
             if self._content_exceeds_view() and self._scrollbar is not None:
-                self._scrollbar.set_state(ScrollbarState.Prefocus)
+                self._scrollbar.set_state(ScrollbarState.Focus)
         self.on_focus_in.broadcast()
 
     def _on_focus_out_internal(self, event):

@@ -18,7 +18,7 @@
         "warning": "#d89614",
         "error": "#dc4446",
         "scrollbar": "#424242",
-        "scrollbar_prefocus": "#4a4a4a",
+        "scrollbar_focus": "#4a4a4a",
         "scrollbar_hover": "#525252",
         "scrollbar_press": "#666666",
         "trough": "#303030",

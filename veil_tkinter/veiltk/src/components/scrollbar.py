@@ -8,7 +8,7 @@ from ..core.manager.event_manager import Event
 class ScrollbarState(Enum):
     Normal = "normal"
     Hover = "hover"
-    Prefocus = "prefocus"
+    Focus = "focus"
     Press = "press"
     Disable = "disable"
 
@@ -105,8 +105,8 @@ class Scrollbar(View):
                 'thumb': current_style.component.scrollbar.hover.thumb.color,
                 'trough': current_style.component.scrollbar.normal.trough.color
             },
-            'prefocus': {
-                'thumb': current_style.component.scrollbar.prefocus.thumb.color,
+            'focus': {
+                'thumb': current_style.component.scrollbar.focus.thumb.color,
                 'trough': current_style.component.scrollbar.normal.trough.color
             },
             'press': {
@@ -220,8 +220,8 @@ class Scrollbar(View):
         elif self._external_state == ScrollbarState.Hover:
             color = self._styles['hover']['thumb']
             trough_color = self._styles['normal']['trough']
-        elif self._external_state == ScrollbarState.Prefocus:
-            color = self._styles['prefocus']['thumb']
+        elif self._external_state == ScrollbarState.Focus:
+            color = self._styles['focus']['thumb']
             trough_color = self._styles['normal']['trough']
         else:
             color = self._styles['normal']['thumb']
