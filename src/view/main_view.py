@@ -49,16 +49,17 @@ class MainView(BaseView):
         self.after(100, self._check_git_on_startup)
 
     def _check_git_on_startup(self):
-        success, git_path, message = self.main_viewmodel.check_git_on_startup()
+        success, git_path, message, is_newly_found = self.main_viewmodel.check_git_on_startup()
 
         if success and git_path:
-            # 自动找到 Git：弹窗告知用户路径，并提醒可在设置中更改
-            success_msg = Utils.format_localized_message(f"git_auto_found_success: {git_path}")
-            vk.Alert.show_normal(
-                master=self,
-                title=vk.LocalizedText("git_check"),
-                message=vk.LocalizedText(success_msg, text_type=vk.LocalizedText.TextType.STRING)
-            )
+            # 仅在首次自动发现 Git 时弹窗告知，后续启动不再提醒
+            if is_newly_found:
+                success_msg = Utils.format_localized_message(f"git_auto_found_success: {git_path}")
+                vk.Alert.show_normal(
+                    master=self,
+                    title=vk.LocalizedText("git_check"),
+                    message=vk.LocalizedText(success_msg, text_type=vk.LocalizedText.TextType.STRING)
+                )
         elif not success:
             vk.Alert.show_normal(
                 master=self,

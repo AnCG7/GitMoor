@@ -54,10 +54,14 @@ class MainViewModel(BaseViewModel):
         enable_lfs = self.local_data_manager.get_value_value("enable_lfs", False)
         success, git_path, message = self.git_manager.check_git_on_startup(saved_git_path, enable_lfs)
         
+        # 标记是否为首次自动发现：之前没有保存的路径，现在自动找到了
+        is_newly_found = False
         if success and git_path:
             self.set_git_exe_path(git_path)
+            if not saved_git_path:
+                is_newly_found = True
         
-        return success, git_path, self._to_localized_text(message)
+        return success, git_path, self._to_localized_text(message), is_newly_found
     
     def destroy(self):
         super().destroy()
