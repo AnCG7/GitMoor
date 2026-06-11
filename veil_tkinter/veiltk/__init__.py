@@ -6,6 +6,8 @@ from .src.core.manager.localization_manager import LocalizationManager, Localize
 from .src.core.manager.ui_style_manager import UIStyleManager, StyleObject, Font, Style, StyleRoot
 from .src.core.manager.event_manager import Event
 from .src.core.utils.utils import Utils, StringVar, BooleanVar
+from .src.core.utils.platform_info import PlatformInfo
+from .src.core.utils.platform_input_bind import PlatformInputBind
 from .src.components.alert import Alert
 from .src.components.button import Button
 from .src.components.browse_entry import BrowseEntry
@@ -82,4 +84,6 @@ __all__ = [
     'LoadingRectView',
     'Loading',
     'LoadingStyle',
+    'PlatformInfo',
+    'PlatformInputBind',
 ]

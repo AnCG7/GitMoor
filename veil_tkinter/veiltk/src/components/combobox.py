@@ -190,7 +190,7 @@ class Combobox(View):
         self._internal_bind_ids.append((self.arrow_button, '<ButtonRelease-1>', self.arrow_button.bind('<ButtonRelease-1>', self._on_arrow_release_internal, add='+')))
 
         self.listbox.on_select.add_listener(self._on_listbox_select_internal)
-        self.listbox.on_tab_block.add_listener(self._on_listbox_tab_block_internal)
+        self.listbox._on_tab_block.add_listener(self._on_listbox_tab_block_internal)
 
         self.entry.on_enter.add_listener(self._on_enter_internal)
         self.entry.on_leave.add_listener(self._on_leave_internal)

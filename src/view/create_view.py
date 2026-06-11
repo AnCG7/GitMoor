@@ -79,8 +79,11 @@ class CreateView(BaseView):
         result_frame.grid(row=7, column=0, columnspan=3, sticky='ew', pady=10, padx=6)
         result_frame.grid_columnconfigure(0, weight=1)
 
-        self.result_label = vk.Label(result_frame, text=vk.LocalizedText("", text_type=vk.LocalizedText.TextType.STRING), anchor='w', justify='left', responsive_wrap=True)
-        self.result_label.grid(row=0, column=0, sticky='ew')
+        self.result_text = vk.Text(result_frame, text=vk.LocalizedText("", text_type=vk.LocalizedText.TextType.STRING), wrap_mode=vk.TextWrapMode.Char)
+        self.result_text.set_mode(vk.TextMode.Label)
+        self.result_text.set_selectable(True)
+        self.result_text.set_copyable(True)
+        self.result_text.grid(row=0, column=0, sticky='ew')
 
         self.copy_button = vk.NormalButton(
             result_frame,
@@ -97,9 +100,11 @@ class CreateView(BaseView):
         saved_text, saved_color_type = self.create_viewmodel.get_result()
         if saved_text:
             self._result_text = saved_text
-            self.result_label.set_text(vk.LocalizedText(self._result_text, text_type=vk.LocalizedText.TextType.STRING))
+            self.result_text.set_text(vk.LocalizedText(self._result_text, text_type=vk.LocalizedText.TextType.STRING))
             if saved_color_type is not None:
-                self.result_label.set_color_type(saved_color_type)
+                fg_color = Utils.get_label_color(saved_color_type)
+                self.result_text.tag_configure("msg_color", foreground=fg_color)
+                self.result_text.tag_add("msg_color", "1.0", "end")
                 self.copy_button.hide(saved_color_type == vk.LabelColorType.Success)
 
     def _create_entry_row(self, row, value):
@@ -242,16 +247,22 @@ class CreateView(BaseView):
 
         if success:
             self._result_text = f"{vk.LocalizedText('success').get_text()}: {message.get_text()}"
-            self.result_label.set_text(vk.LocalizedText(self._result_text, text_type=vk.LocalizedText.TextType.STRING))
-            self.result_label.set_color_type(vk.LabelColorType.Success)
+            self.result_text.set_text(vk.LocalizedText(self._result_text, text_type=vk.LocalizedText.TextType.STRING))
+            self._apply_result_color(vk.LabelColorType.Success)
             self.copy_button.hide(True)
             self.create_viewmodel.save_result(self._result_text, vk.LabelColorType.Success)
         else:
             self._result_text = f"{vk.LocalizedText('failed').get_text()}: {message.get_text()}"
-            self.result_label.set_text(vk.LocalizedText(self._result_text, text_type=vk.LocalizedText.TextType.STRING))
-            self.result_label.set_color_type(vk.LabelColorType.Error)
+            self.result_text.set_text(vk.LocalizedText(self._result_text, text_type=vk.LocalizedText.TextType.STRING))
+            self._apply_result_color(vk.LabelColorType.Error)
             self.copy_button.hide(False)
             self.create_viewmodel.save_result(self._result_text, vk.LabelColorType.Error)
+
+    def _apply_result_color(self, color_type):
+        """通过 tag 为 result_text 设置前景色"""
+        fg_color = Utils.get_label_color(color_type)
+        self.result_text.tag_configure("msg_color", foreground=fg_color)
+        self.result_text.tag_add("msg_color", "1.0", "end")
 
     def copy_error_message(self):
         if self._result_text:

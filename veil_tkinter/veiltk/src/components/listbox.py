@@ -5,6 +5,7 @@ from ..core.view import View
 from ..core.manager.ui_style_manager import UIStyleManager
 from ..core.manager.event_manager import Event
 from ..core.manager.localization_manager import LocalizationManager, LocalizedText
+from ..core.utils.platform_input_bind import PlatformInputBind
 
 
 class ListBoxItem(View):
@@ -68,7 +69,7 @@ class ListBoxItem(View):
         self._internal_bind_ids.append((self._tk_label, '<ButtonRelease-1>', self._tk_label.bind('<ButtonRelease-1>', self._on_button_release, add='+')))
         self._internal_bind_ids.append((self._tk_label, '<Enter>', self._tk_label.bind('<Enter>', self._on_enter_internal, add='+')))
         self._internal_bind_ids.append((self._tk_label, '<Leave>', self._tk_label.bind('<Leave>', self._on_leave_internal, add='+')))
-        self._internal_bind_ids.append((self._tk_label, '<MouseWheel>', self._tk_label.bind('<MouseWheel>', self._on_mouse_wheel, add='+')))
+        self._internal_bind_ids.extend(PlatformInputBind.bind_mousewheel(self._tk_label, self._on_mouse_wheel))
 
         self._apply_style()
         
@@ -153,9 +154,8 @@ class ListBoxItem(View):
             self._apply_style()
             self.on_leave.broadcast()
 
-    def _on_mouse_wheel(self, event):
-        delta = -1 if event.delta > 0 else 1
-        self.on_scroll.broadcast(delta)
+    def _on_mouse_wheel(self, event, delta):
+        self.on_scroll.broadcast(-1 * delta)
         return 'break'
 
     def set_selected(self, selected):
@@ -258,7 +258,7 @@ class ListBox(View):
         self._internal_bind_ids.append((self._tk_frame, '<Leave>', self._tk_frame.bind('<Leave>', self._on_leave_internal, add='+')))
 
         self._internal_bind_ids.append((self.canvas, '<Configure>', self.canvas.bind('<Configure>', self._on_canvas_configure, add='+')))
-        self._internal_bind_ids.append((self.canvas, '<MouseWheel>', self.canvas.bind('<MouseWheel>', self._on_mouse_wheel, add='+')))
+        self._internal_bind_ids.extend(PlatformInputBind.bind_mousewheel(self.canvas, self._on_mouse_wheel))
 
     def _update_viewport(self, *args):
         if not self.canvas.winfo_exists():
@@ -340,11 +340,10 @@ class ListBox(View):
         self._update_viewport()
         self._trigger_scroll_event()
 
-    def _on_mouse_wheel(self, event):
+    def _on_mouse_wheel(self, event, delta):
         if self._disabled:
             return
-        delta = -1 if event.delta > 0 else 1
-        self.scroll_by(delta)
+        self.scroll_by(-1 * delta)
 
     def scroll_by(self, delta):
         total_h = len(self._items) * self.get_item_height()
@@ -626,6 +625,16 @@ class ListBox(View):
         self._disabled = disabled
         for btn in self._item_pool:
             btn.set_disabled(disabled)
+
+        if disabled:
+            # 禁用时不允许获取焦点
+            self._tk_frame.config(takefocus=False)
+            # 如果当前有焦点，让出焦点到下一个组件
+            if self._tk_frame.focus_get() == self._tk_frame:
+                self._tk_frame.tk_focusNext().focus_set()
+        else:
+            # 恢复允许获取焦点
+            self._tk_frame.config(takefocus=True)
 
     def is_disabled(self):
         return self._disabled

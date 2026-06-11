@@ -13,6 +13,28 @@ class AppFont:
 
 class Utils:
     @staticmethod
+    def get_label_color(color_type):
+        """
+        根据 LabelColorType 获取对应的前景色值。
+        可配合 Text 组件的 tag_configure 使用，为文本设置提示颜色。
+
+        Args:
+            color_type (vk.LabelColorType): 颜色类型枚举
+
+        Returns:
+            str: 十六进制颜色值字符串
+        """
+        style = vk.UIStyleManager.get_instance().get_style()
+        label_style = style.component.label
+        color_map = {
+            vk.LabelColorType.Normal: label_style.fg.color,
+            vk.LabelColorType.Warning: label_style.warning.color if hasattr(label_style, 'warning') else label_style.fg.color,
+            vk.LabelColorType.Error: label_style.error.color if hasattr(label_style, 'error') else '#FF0000',
+            vk.LabelColorType.Success: label_style.success.color if hasattr(label_style, 'success') else label_style.fg.color,
+        }
+        return color_map.get(color_type, label_style.fg.color)
+
+    @staticmethod
     def parse_markdown_link(markdown_link):
         """
         解析markdown格式的超链接

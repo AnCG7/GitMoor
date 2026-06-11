@@ -1,6 +1,6 @@
 # GitMoor — 本地 Git 仓库配对工具
 
-轻量级 Git 桌面工具，裸仓库（bare）与工作仓库（work）配对。支持本地磁盘、局域网共享目录，轻松搭建本地 Git 远程仓库。
+轻量级 Git 桌面小工具，裸仓库（bare）与工作仓库（work）配对。支持本地磁盘、局域网共享目录，轻松搭建本地 Git 远程仓库。
 
 
 ## 功能特性
@@ -24,7 +24,7 @@
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/yourusername/GitMoor.git
+git clone https://github.com/AnCG7/GitMoor
 cd GitMoor
 
 # 2. 直接运行

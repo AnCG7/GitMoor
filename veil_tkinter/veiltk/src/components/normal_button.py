@@ -4,6 +4,7 @@ from .button import Button
 from ..core.manager.localization_manager import LocalizationManager, LocalizedText
 from ..core.manager.ui_style_manager import UIStyleManager, StyleObject
 from ..core.manager.event_manager import Event
+from ..core.utils.platform_input_bind import PlatformInputBind
 
 
 class ButtonStyleType(Enum):
@@ -100,7 +101,7 @@ class NormalButton(Button):
         self._internal_bind_ids.append((self._tk_button, '<Configure>', self._tk_button.bind('<Configure>', self._on_configure_internal, add='+')))
         self._internal_bind_ids.append((self._tk_button, '<FocusIn>', self._tk_button.bind('<FocusIn>', self._on_focus_in, add='+')))
         self._internal_bind_ids.append((self._tk_button, '<FocusOut>', self._tk_button.bind('<FocusOut>', self._on_focus_out, add='+')))
-        self._internal_bind_ids.append((self._tk_button, '<MouseWheel>', self._tk_button.bind('<MouseWheel>', self._on_mouse_wheel, add='+')))
+        self._internal_bind_ids.extend(PlatformInputBind.bind_mousewheel(self._tk_button, self._on_mouse_wheel))
         self._internal_bind_ids.append((self._tk_button, '<KeyPress-space>', self._tk_button.bind('<KeyPress-space>', self._on_key_press, add='+')))
         self._internal_bind_ids.append((self._tk_button, '<KeyRelease-space>', self._tk_button.bind('<KeyRelease-space>', self._on_key_release, add='+')))
         self._internal_bind_ids.append((self._tk_button, '<KeyPress-Return>', self._tk_button.bind('<KeyPress-Return>', self._on_key_press, add='+')))
@@ -203,9 +204,8 @@ class NormalButton(Button):
             self._apply_style()
             self.on_leave.broadcast()
 
-    def _on_mouse_wheel(self, event):
-        delta = -1 if event.delta > 0 else 1
-        self.on_scroll.broadcast(delta)
+    def _on_mouse_wheel(self, event, delta):
+        self.on_scroll.broadcast(-1 * delta)
         return 'break'
 
     def _on_key_press(self, event):

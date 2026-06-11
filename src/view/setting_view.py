@@ -36,8 +36,11 @@ class SettingView(BaseView):
 
         self._create_browse_row(2, self.select_git_exe)
 
-        self.git_check_label = vk.Label(self, text=vk.LocalizedText("git_path_not_set"), responsive_wrap=True, anchor='w', justify='left')
-        self.git_check_label.grid(row=3, column=0, columnspan=3, sticky='ew', pady=self.default_pady, padx=self.default_padx)
+        self.git_check_text = vk.Text(self, text=vk.LocalizedText("git_path_not_set"), wrap_mode=vk.TextWrapMode.Char)
+        self.git_check_text.set_mode(vk.TextMode.Label)
+        self.git_check_text.set_selectable(True)
+        self.git_check_text.set_copyable(True)
+        self.git_check_text.grid(row=3, column=0, columnspan=3, sticky='ew', pady=self.default_pady, padx=self.default_padx)
 
         self._register_vm_listener(self.setting_viewmodel.on_settings_updated, self.on_settings_updated)
 
@@ -116,8 +119,10 @@ class SettingView(BaseView):
         else:
             git_message = vk.LocalizedText("git_path_not_set").get_text()
 
-        self.git_check_label.set_text(vk.LocalizedText(git_message, text_type=vk.LocalizedText.TextType.STRING))
-        self.git_check_label.set_color_type(color_type)
+        self.git_check_text.set_text(vk.LocalizedText(git_message, text_type=vk.LocalizedText.TextType.STRING))
+        fg_color = Utils.get_label_color(color_type)
+        self.git_check_text.tag_configure("msg_color", foreground=fg_color)
+        self.git_check_text.tag_add("msg_color", "1.0", "end")
 
     def _on_theme_selected(self, index, value):
         if self._is_loading:

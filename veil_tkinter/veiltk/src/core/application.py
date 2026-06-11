@@ -41,6 +41,7 @@ class App:
 
     def _build_widget(self):
         self._tk = tk.Tk()
+        self._tk.withdraw()  # 先隐藏窗口，避免显示时闪烁
         self._tk.title(self._title.get_text() if hasattr(self._title, 'get_text') else self._title)
         self._tk.geometry(f"{self._width}x{self._height}")
         self._tk.protocol("WM_DELETE_WINDOW", self._on_close_internal)
@@ -128,6 +129,7 @@ class App:
         return self._tk.clipboard_get()
 
     def run(self):
+        self._tk.deiconify()  # 所有配置完成后再显示窗口
         self._tk.mainloop()
 
     def shutdown(self):

@@ -103,7 +103,7 @@ class Entry(View):
             self._internal_bind_ids.append((target, '<ButtonPress-1>', target.bind('<ButtonPress-1>', self._on_press_internal, add='+')))
             self._internal_bind_ids.append((target, '<ButtonRelease-1>', target.bind('<ButtonRelease-1>', self._on_release_internal, add='+')))
             self._internal_bind_ids.append((target, '<Motion>', target.bind('<Motion>', self._on_motion_internal, add='+')))
-            self._internal_bind_ids.append((target, '<B1-Motion>', target.bind('<B1-Motion>', self._on_motion_internal, add='+')))
+            self._internal_bind_ids.append((target, '<B1-Motion>', target.bind('<B1-Motion>', self._on_b1_motion_internal, add='+')))
 
         self._internal_bind_ids.append((self._tk_entry, '<FocusIn>', self._tk_entry.bind('<FocusIn>', self._on_focus_in_internal, add='+')))
         self._internal_bind_ids.append((self._tk_entry, '<FocusOut>', self._tk_entry.bind('<FocusOut>', self._on_focus_out_internal, add='+')))
@@ -216,10 +216,14 @@ class Entry(View):
 
     def _on_motion_internal(self, event):
         if self._entry_mode not in [EntryMode.AllDisable, EntryMode.Disable]:
-            if event.state & 0x0100:
-                rel_x = self._get_rel_x(event)
-                self._tk_entry.selection_to(f"@{rel_x}")
-                self._tk_entry.icursor(f"@{rel_x}")
+            self.on_motion.broadcast(event)
+
+    def _on_b1_motion_internal(self, event):
+        """鼠标左键拖动时处理文本选区（由 <B1-Motion> 触发，无需手动检测按键状态）"""
+        if self._entry_mode not in [EntryMode.AllDisable, EntryMode.Disable]:
+            rel_x = self._get_rel_x(event)
+            self._tk_entry.selection_to(f"@{rel_x}")
+            self._tk_entry.icursor(f"@{rel_x}")
             self.on_motion.broadcast(event)
 
     def _on_focus_in_internal(self, event):

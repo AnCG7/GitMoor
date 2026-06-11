@@ -4,6 +4,7 @@ from ..core.view import View
 from ..core.manager.ui_style_manager import UIStyleManager, StyleObject
 from ..core.manager.event_manager import Event
 from ..core.manager.localization_manager import LocalizedText, LocalizationManager
+from ..core.utils.platform_input_bind import PlatformInputBind
 from .scrollbar import Scrollbar, Orientation, ScrollbarState
 from .scroll_listbox import ScrollbarMode
 
@@ -74,6 +75,7 @@ class Text(View):
         self._last_text_width = None
         self._last_text_height = None
         self._scrollbar_stable = False
+        self._mapped = False
 
         # Events
         self.on_focus_in = Event()
@@ -139,7 +141,6 @@ class Text(View):
         self._bind_events()
         self._register_listeners()
         self._update_styles()
-        self._tk_frame.after_idle(self._update_scrollbar_state)
 
         return self._tk_frame
 
@@ -208,10 +209,9 @@ class Text(View):
 
         # Tab 导航
         self._internal_bind_ids.append((self._tk_text, '<Tab>', self._tk_text.bind('<Tab>', self._on_tab_internal, add='+')))
-        self._internal_bind_ids.append((self._tk_text, '<Shift-Tab>', self._tk_text.bind('<Shift-Tab>', self._on_shift_tab_internal, add='+')))
-        self._internal_bind_ids.append((self._tk_text, '<ISO_Left_Tab>', self._tk_text.bind('<ISO_Left_Tab>', self._on_shift_tab_internal, add='+')))
+        self._internal_bind_ids.extend(PlatformInputBind.bind_shift_tab(self._tk_text, self._on_shift_tab_internal))
         self._internal_bind_ids.append((self._tk_text, '<Control-Tab>', self._tk_text.bind('<Control-Tab>', self._on_ctrl_tab_internal, add='+')))
-        self._internal_bind_ids.append((self._tk_text, '<Control-Shift-Tab>', self._tk_text.bind('<Control-Shift-Tab>', self._on_ctrl_shift_tab_internal, add='+')))
+        self._internal_bind_ids.extend(PlatformInputBind.bind_ctrl_shift_tab(self._tk_text, self._on_ctrl_shift_tab_internal))
 
         # 核心拦截与底层事件监听
         self._internal_bind_ids.append((self._tk_text, '<KeyPress>', self._tk_text.bind('<KeyPress>', self._on_key_press_internal, add='+')))
@@ -226,7 +226,7 @@ class Text(View):
         for write_event in ('<<Paste>>', '<<Cut>>', '<<Clear>>', '<<Undo>>', '<<Redo>>', '<<PasteSelection>>'):
             self._internal_bind_ids.append((self._tk_text, write_event, self._tk_text.bind(write_event, self._block_modify_events, add='+')))
 
-        self._internal_bind_ids.append((self._tk_frame_b, '<MouseWheel>', self._tk_frame_b.bind('<MouseWheel>', self._on_mouse_wheel, add='+')))
+        self._internal_bind_ids.extend(PlatformInputBind.bind_mousewheel(self._tk_frame_b, self._on_mouse_wheel))
         self._add_parent_to_bindtags(self._tk_text, self._tk_frame_b)
 
         self._internal_bind_ids.append((self._scrollbar._tk_canvas, '<Enter>', self._scrollbar._tk_canvas.bind('<Enter>', self._on_scrollbar_enter, add='+')))
@@ -407,7 +407,7 @@ class Text(View):
         except (tk.TclError, ValueError):
             pass
 
-    def _on_mouse_wheel(self, event):
+    def _on_mouse_wheel(self, event, delta):
         if not self._mouse_inside:
             return
         if self._text_mode == TextMode.Disable:
@@ -421,7 +421,7 @@ class Text(View):
                 return
             if self._text_mode not in (TextMode.Display, TextMode.Label):
                 self.focus_set()
-            self._tk_text.yview_scroll(-1 * (event.delta // 120), 'units')
+            self._tk_text.yview_scroll(-1 * delta, 'units')
             self._on_scroll_event.broadcast(event)
             return 'break'
         except tk.TclError:
@@ -429,6 +429,8 @@ class Text(View):
 
     def _update_scrollbar_state(self, *args, show_only=False):
         if not hasattr(self, '_scrollbar') or self._scrollbar is None:
+            return
+        if not self._mapped:
             return
 
         try:
@@ -468,7 +470,7 @@ class Text(View):
             self._tk_frame.after_idle(self._clear_layout_flag)
 
         if self._scrollbar_visible and self._has_focus():
-            if self._text_mode in (TextMode.Readonly, TextMode.Display, TextMode.Label):
+            if self._text_mode in (TextMode.Normal, TextMode.Readonly, TextMode.Display, TextMode.Label):
                 if self._scrollbar is not None:
                     self._scrollbar.set_state(ScrollbarState.Focus)
         elif not self._scrollbar_visible and self._scrollbar is not None:
@@ -518,7 +520,7 @@ class Text(View):
             self._update_styles()
         if self._tk_frame.focus_get() != self._tk_text:
             self._tk_text.focus_set()
-        if self._text_mode in (TextMode.Readonly, TextMode.Display, TextMode.Label):
+        if self._text_mode in (TextMode.Normal, TextMode.Readonly, TextMode.Display, TextMode.Label):
             if self._content_exceeds_view() and self._scrollbar is not None:
                 self._scrollbar.set_state(ScrollbarState.Focus)
         self.on_focus_in.broadcast()
@@ -760,37 +762,32 @@ class Text(View):
         if self._text_mode == TextMode.Disable:
             return "break"
 
+        # 单独的修饰键按压在所有受限模式下都无害放行
+        if event.keysym in PlatformInputBind.MODIFIER_KEYS:
+            return
+
         # 2. Display 模式和 Label（非 selectable）模式：只放行滚动导航键
         if self._text_mode == TextMode.Display or (self._text_mode == TextMode.Label and not self._selectable):
-            if self._content_exceeds_view():
-                scroll_keys = ('Up', 'Down', 'Page_Up', 'Page_Down', 'Home', 'End', 'Prior', 'Next')
-                if event.keysym in scroll_keys:
-                    # 手动执行滚动，因为 Display/Label 模式下 tk_text 为 disabled 状态无法原生导航
-                    self._handle_keyboard_scroll(event)
-                    return "break"
-            # 放行单独的修饰键按压（避免无意义的 break 干扰）
-            modifier_keys = ('Control_L', 'Control_R', 'Shift_L', 'Shift_R', 'Alt_L', 'Alt_R', 'Command_L', 'Command_R')
-            if event.keysym in modifier_keys:
-                return
+            if self._content_exceeds_view() and event.keysym in PlatformInputBind.SCROLL_KEYS:
+                # 手动执行滚动，因为 Display/Label 模式下 tk_text 为 disabled 状态无法原生导航
+                self._handle_keyboard_scroll(event)
+                return "break"
             return "break"
 
         # 3. 精细控制只读与标签可选交互
         if self._text_mode == TextMode.Readonly or (self._text_mode == TextMode.Label and self._selectable):
-            # 获取跨平台操作系统修饰键
-            is_ctrl = (event.state & 0x0004) or (event.state & 0x0008)
-
-            # 放行复制与全选组合键
-            if is_ctrl and event.keysym.lower() in ('c', 'a'):
+            # 放行复制与全选组合键：keysym 是 c/a 且 char 为控制字符，表示 Ctrl/Command+C/A
+            if event.keysym.lower() in ('c', 'a') and event.char and ord(event.char) < 32:
                 return
 
-            # 放行原生导航及 Shift 键盘文本选择矩阵
-            nav_keys = ('Up', 'Down', 'Left', 'Right', 'Page_Up', 'Page_Down', 'Home', 'End', 'Prior', 'Next')
-            if event.keysym in nav_keys:
-                return
+            # 滚动导航键：直接执行视图滚动，避免隐形光标导致的"按多下才滚动"问题
+            if event.keysym in PlatformInputBind.SCROLL_KEYS:
+                if self._content_exceeds_view():
+                    self._handle_keyboard_scroll(event)
+                return "break"
 
-            # 放行单独的修饰键按压
-            modifier_keys = ('Control_L', 'Control_R', 'Shift_L', 'Shift_R', 'Alt_L', 'Alt_R', 'Command_L', 'Command_R')
-            if event.keysym in modifier_keys:
+            # 放行 Left/Right 用于光标水平移动（选区相关场景可能需要）
+            if event.keysym in PlatformInputBind.NAVIGATE_KEYS:
                 return
 
             # 拦截任何输入、修改、删除或空隙操作（如 Backspace, Delete, Enter 等）
@@ -824,6 +821,16 @@ class Text(View):
         if self._layout_in_progress:
             self._last_text_width = w
             self._last_text_height = h
+            return
+        # 布局尚未稳定：等待 _tk_text 获得真实高度（> 1px）后标记为已稳定
+        if not self._mapped:
+            self._last_text_width = w
+            self._last_text_height = h
+            if h > 1:
+                self._mapped = True
+                if self._scrollbar_visible is None:
+                    self._scrollbar_visible = False
+                self._update_scrollbar_state()
             return
         # 只在实际尺寸变化时才检查 scrollbar 状态
         if w == self._last_text_width and h == self._last_text_height:

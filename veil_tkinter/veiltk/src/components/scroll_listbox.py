@@ -4,6 +4,7 @@ from ..core.view import View
 from ..core.manager.ui_style_manager import UIStyleManager, StyleObject
 from ..core.manager.event_manager import Event
 from ..core.manager.localization_manager import LocalizedText
+from ..core.utils.platform_input_bind import PlatformInputBind
 from .listbox import ListBox
 from .scrollbar import Scrollbar, Orientation, ScrollbarState
 
@@ -27,7 +28,7 @@ class ScrollListbox(View):
         self.styles = UIStyleManager.get_instance()
         self.on_select = Event()
         self.on_configure = Event()
-        self.on_tab_block = Event()
+        self._on_tab_block = Event()
         self.on_focus_in = Event()
         self.on_focus_out = Event()
 
@@ -93,9 +94,9 @@ class ScrollListbox(View):
         self._internal_bind_ids.append((self._tk_frame, '<Button-1>', self._tk_frame.bind('<Button-1>', self._on_click_internal, add='+')))
         self._internal_bind_ids.append((self._tk_frame, '<Enter>', self._tk_frame.bind('<Enter>', self._on_mouse_enter, add='+')))
         self._internal_bind_ids.append((self._tk_frame, '<Leave>', self._tk_frame.bind('<Leave>', self._on_mouse_leave, add='+')))
-        self._internal_bind_ids.append((self._tk_frame, '<MouseWheel>', self._tk_frame.bind('<MouseWheel>', self._on_mouse_wheel, add='+')))
+        self._internal_bind_ids.extend(PlatformInputBind.bind_mousewheel(self._tk_frame, self._on_mouse_wheel))
         self._internal_bind_ids.append((self._tk_frame, '<Tab>', self._tk_frame.bind('<Tab>', self._on_tab_internal, add='+')))
-        self._internal_bind_ids.append((self._tk_frame, '<Shift-Tab>', self._tk_frame.bind('<Shift-Tab>', self._on_shift_tab_internal, add='+')))
+        self._internal_bind_ids.extend(PlatformInputBind.bind_shift_tab(self._tk_frame, self._on_shift_tab_internal))
 
         self._add_parent_to_bindtags(self.listbox._tk_frame)
         self._add_parent_to_bindtags(self.listbox.canvas)
@@ -140,12 +141,12 @@ class ScrollListbox(View):
         pass
 
     def _on_tab_internal(self, event):
-        self.on_tab_block.broadcast('tab')
+        self._on_tab_block.broadcast('tab')
         if self._block_tab:
             return 'break'
 
     def _on_shift_tab_internal(self, event):
-        self.on_tab_block.broadcast('shift_tab')
+        self._on_tab_block.broadcast('shift_tab')
         if self._block_tab:
             return 'break'
 
@@ -155,7 +156,7 @@ class ScrollListbox(View):
     def _on_mouse_leave(self, event):
         self._mouse_inside = False
 
-    def _on_mouse_wheel(self, event):
+    def _on_mouse_wheel(self, event, delta):
         if self._disabled or not self._mouse_inside:
             return
 
@@ -174,7 +175,7 @@ class ScrollListbox(View):
             return
 
         self.focus_set()
-        self.listbox.scroll_by(-1 if event.delta > 0 else 1)
+        self.listbox.scroll_by(-1 * delta)
         return 'break'
 
     def set_scrollbar_mode(self, mode: ScrollbarMode):
@@ -302,6 +303,16 @@ class ScrollListbox(View):
         self._disabled = disabled
         self.listbox.set_disabled(disabled)
         self.scrollbar.set_disabled(disabled)
+
+        if disabled:
+            # 禁用时不允许获取焦点
+            self._tk_frame.config(takefocus=False)
+            # 如果当前有焦点，让出焦点到下一个组件
+            if self._tk_frame.focus_get() == self._tk_frame:
+                self._tk_frame.tk_focusNext().focus_set()
+        else:
+            # 恢复允许获取焦点
+            self._tk_frame.config(takefocus=True)
 
     def set_block_tab(self, block):
         self._block_tab = block
