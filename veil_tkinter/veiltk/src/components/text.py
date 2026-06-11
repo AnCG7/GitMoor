@@ -329,7 +329,7 @@ class Text(View):
         if self._text_mode == TextMode.Disable:
             frame_takefocus = 0
         elif self._text_mode == TextMode.Label:
-            frame_takefocus = 1 if (self._selectable or self._content_exceeds_view()) else 0
+            frame_takefocus = 1 if self._content_exceeds_view() else 0
         elif self._text_mode == TextMode.Display:
             frame_takefocus = 1 if self._content_exceeds_view() else 0
         else:
@@ -510,7 +510,7 @@ class Text(View):
             if not self._content_exceeds_view():
                 self._tk_frame.after_idle(self._deflect_focus)
                 return "break"
-        if self._text_mode == TextMode.Label and not self._selectable:
+        if self._text_mode == TextMode.Label:
             if not self._content_exceeds_view():
                 self._tk_frame.after_idle(self._deflect_focus)
                 return "break"
@@ -967,7 +967,7 @@ class Text(View):
     def focus_set(self):
         if self._text_mode == TextMode.Disable:
             return
-        if self._text_mode == TextMode.Label and not self._selectable:
+        if self._text_mode == TextMode.Label:
             if not self._content_exceeds_view():
                 return
         self._tk_frame.focus_set()
