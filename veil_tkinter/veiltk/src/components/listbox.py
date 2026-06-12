@@ -631,7 +631,10 @@ class ListBox(View):
             self._tk_frame.config(takefocus=False)
             # 如果当前有焦点，让出焦点到下一个组件
             if self._tk_frame.focus_get() == self._tk_frame:
-                self._tk_frame.tk_focusNext().focus_set()
+                try:
+                    self._tk_frame.tk_focusNext().focus_set()
+                except Exception:
+                    pass
         else:
             # 恢复允许获取焦点
             self._tk_frame.config(takefocus=True)

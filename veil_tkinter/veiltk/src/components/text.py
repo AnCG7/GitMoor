@@ -570,19 +570,43 @@ class Text(View):
         except tk.TclError:
             pass
 
-    def _deflect_focus(self):
+    def _navigate_focus(self, forward=True, start_from_frame=False):
+        """安全地将焦点转移到组件外的下一个/上一个可聚焦控件。
+        
+        Args:
+            forward: True=下一个, False=上一个
+            start_from_frame: True=从 _tk_frame 开始, False=从 _tk_text 开始
+        """
+        _INTERNAL = (self._tk_frame, self._tk_text, self._tk_frame_b)
         try:
-            curr = self._tk_frame
-            while True:
-                nxt = curr.tk_focusNext()
-                if not nxt or nxt == self._tk_frame:
+            curr = self._tk_frame if start_from_frame else self._tk_text
+            terminal = self._tk_frame if start_from_frame else self._tk_text
+            visited = set()  # 哨兵：检测焦点链上的环形回路，防止死循环
+            # 安全上限：基于顶层窗口的子 widget 数量动态计算
+            try:
+                toplevel = curr.winfo_toplevel()
+                widget_count = len(toplevel.winfo_children())
+                max_steps = max(widget_count * 3, 20)
+            except Exception:
+                max_steps = 50  # 兜底值
+            while len(visited) < max_steps:
+                nxt = curr.tk_focusNext() if forward else curr.tk_focusPrev()
+                if not nxt or nxt == terminal or nxt in visited:
                     break
-                if nxt not in (self._tk_frame, self._tk_text, self._tk_frame_b):
-                    nxt.focus_set()
+                visited.add(nxt)
+                if nxt not in _INTERNAL:
+                    try:
+                        if nxt.winfo_exists():
+                            nxt.focus_set()
+                    except Exception:
+                        pass
                     break
                 curr = nxt
-        except tk.TclError:
+        except Exception:
             pass
+
+    def _deflect_focus(self):
+        self._navigate_focus(forward=True, start_from_frame=True)
 
     def _on_tab_internal(self, event):
         self._on_tab_block_event.broadcast('tab')
@@ -590,18 +614,7 @@ class Text(View):
             return 'break'
 
         if self._text_mode in (TextMode.Readonly, TextMode.Display, TextMode.Label):
-            try:
-                curr = self._tk_text
-                while True:
-                    nxt = curr.tk_focusNext()
-                    if not nxt or nxt == self._tk_text:
-                        break
-                    if nxt not in (self._tk_frame, self._tk_text, self._tk_frame_b):
-                        nxt.focus_set()
-                        break
-                    curr = nxt
-            except tk.TclError:
-                pass
+            self._navigate_focus(forward=True)
             return 'break'
 
         try:
@@ -616,48 +629,19 @@ class Text(View):
             return 'break'
 
         if self._text_mode in (TextMode.Readonly, TextMode.Display, TextMode.Label):
-            try:
-                curr = self._tk_text
-                while True:
-                    prev = curr.tk_focusPrev()
-                    if not prev or prev == self._tk_text:
-                        break
-                    if prev not in (self._tk_frame, self._tk_text, self._tk_frame_b):
-                        prev.focus_set()
-                        break
-                    curr = prev
-            except tk.TclError:
-                pass
+            self._navigate_focus(forward=False)
             return 'break'
 
     def _on_ctrl_tab_internal(self, event):
-        try:
-            curr = self._tk_text
-            while True:
-                nxt = curr.tk_focusNext()
-                if not nxt or nxt == self._tk_text:
-                    break
-                if nxt not in (self._tk_frame, self._tk_text, self._tk_frame_b):
-                    nxt.focus_set()
-                    break
-                curr = nxt
-        except tk.TclError:
-            pass
+        if self._text_mode == TextMode.Disable:
+            return 'break'
+        self._navigate_focus(forward=True)
         return 'break'
 
     def _on_ctrl_shift_tab_internal(self, event):
-        try:
-            curr = self._tk_text
-            while True:
-                prev = curr.tk_focusPrev()
-                if not prev or prev == self._tk_text:
-                    break
-                if prev not in (self._tk_frame, self._tk_text, self._tk_frame_b):
-                    prev.focus_set()
-                    break
-                curr = prev
-        except tk.TclError:
-            pass
+        if self._text_mode == TextMode.Disable:
+            return 'break'
+        self._navigate_focus(forward=False)
         return 'break'
 
     def set_block_tab(self, block):
