@@ -300,7 +300,11 @@ class Text(View):
             cursor, tk_state = 'no', 'disabled'
             style = self._styles.disable
         elif self._text_mode == TextMode.Display:
-            cursor, tk_state = 'arrow', 'disabled'
+            # Display 模式可选择时必须为 normal 状态，否则 Tkinter 无法渲染选区
+            if self._selectable:
+                cursor, tk_state = 'xterm', 'normal'
+            else:
+                cursor, tk_state = 'arrow', 'disabled'
             style = self._styles.normal
         elif self._text_mode == TextMode.Label:
             if self._selectable:
@@ -510,11 +514,13 @@ class Text(View):
             self._tk_frame.after_idle(self._deflect_focus)
             return "break"
         if self._text_mode == TextMode.Display:
-            if not self._content_exceeds_view():
+            # 可选时需要保留内核焦点以渲染选区，不可选 + 内容未超出时才转移
+            if not self._selectable and not self._content_exceeds_view():
                 self._tk_frame.after_idle(self._deflect_focus)
                 return "break"
         if self._text_mode == TextMode.Label:
-            if not self._content_exceeds_view():
+            # 可选时需要保留内核焦点以渲染选区，不可选 + 内容未超出时才转移
+            if not self._selectable and not self._content_exceeds_view():
                 self._tk_frame.after_idle(self._deflect_focus)
                 return "break"
         previous = self._interaction_state
@@ -695,10 +701,12 @@ class Text(View):
         if self._text_mode == TextMode.Disable:
             return 'break'
         if self._text_mode == TextMode.Display:
-            return 'break'
+            # 可选择时放行原生选择流，不可选择时截断
+            if not self._selectable:
+                return 'break'
         if self._text_mode == TextMode.Label:
-            # 内容未超出范围时，像 Label 一样不操作焦点，彻底截断事件
-            if not self._content_exceeds_view():
+            # 内容未超出 + 不可选 → 彻底截断；可选时放行以允许鼠标拖选区
+            if not self._content_exceeds_view() and not self._selectable:
                 return 'break'
             if not self._selectable:
                 return 'break'
@@ -711,13 +719,16 @@ class Text(View):
         self._on_press_event.broadcast(event)
 
         if event.widget == self._tk_frame_b:
-            # 防御性检查：Label 模式内容未超出时不主动 focus_set()
+            # Label 模式内容未超出时，不主动 focus_set()，但放行原生选区拖拽
             if self._text_mode == TextMode.Label and not self._content_exceeds_view():
-                return 'break'
-            self.focus_set()
+                if not self._selectable:
+                    return 'break'
+                # selectable=True 时继续执行，但不调用 focus_set()
+            else:
+                self.focus_set()
             text_x, text_y = self._text_rel_xy(event)
             text_y = max(0, min(text_y, self._tk_text.winfo_height() - 1))
-            if self._text_mode in (TextMode.Normal, TextMode.Readonly) or (self._text_mode == TextMode.Label and self._selectable):
+            if self._text_mode in (TextMode.Normal, TextMode.Readonly, TextMode.Display) or (self._text_mode == TextMode.Label and self._selectable):
                 try:
                     idx = self._tk_text.index(f'@{text_x},{text_y}')
                     self._tk_text.mark_set('insert', idx)
@@ -728,10 +739,10 @@ class Text(View):
     def _on_release_internal(self, event):
         if self._text_mode == TextMode.Disable:
             return 'break'
-        if self._text_mode == TextMode.Display:
+        if self._text_mode == TextMode.Display and not self._selectable:
             return 'break'
         if self._text_mode == TextMode.Label:
-            if not self._content_exceeds_view():
+            if not self._content_exceeds_view() and not self._selectable:
                 return 'break'
             if not self._selectable:
                 return 'break'
@@ -746,10 +757,10 @@ class Text(View):
     def _on_motion_internal(self, event):
         if self._text_mode == TextMode.Disable:
             return 'break'
-        if self._text_mode == TextMode.Display:
+        if self._text_mode == TextMode.Display and not self._selectable:
             return 'break'
         if self._text_mode == TextMode.Label:
-            if not self._content_exceeds_view():
+            if not self._content_exceeds_view() and not self._selectable:
                 return 'break'
             if not self._selectable:
                 return 'break'
@@ -759,13 +770,16 @@ class Text(View):
     def _on_platform_copy(self, event):
         if self._text_mode == TextMode.Label and not self._selectable:
             return 'break'
-        if self._text_mode in (TextMode.Display, TextMode.Disable):
+        if self._text_mode == TextMode.Display and not self._selectable:
             return 'break'
-        # 放行 Readonly 和 Normal，让原生类绑定将内容送入剪贴板
+        if self._text_mode == TextMode.Disable:
+            return 'break'
+        # 放行 Readonly、Normal、以及 Display/Label 可选模式下的复制
         return
 
     def _on_platform_select_all(self, event):
-        if self._text_mode in (TextMode.Readonly, TextMode.Normal) or (self._text_mode == TextMode.Label and self._selectable):
+        if self._text_mode in (TextMode.Readonly, TextMode.Normal) or \
+           (self._text_mode in (TextMode.Label, TextMode.Display) and self._selectable):
             try:
                 self._tk_text.tag_add('sel', '1.0', 'end')
             except tk.TclError:
@@ -782,16 +796,16 @@ class Text(View):
         if event.keysym in PlatformInputBind.MODIFIER_KEYS:
             return
 
-        # 2. Display 模式和 Label（非 selectable）模式：只放行滚动导航键
-        if self._text_mode == TextMode.Display or (self._text_mode == TextMode.Label and not self._selectable):
+        # 2. Display（不可选）和 Label（不可选）模式：只放行滚动导航键
+        if (self._text_mode == TextMode.Display and not self._selectable) or (self._text_mode == TextMode.Label and not self._selectable):
             if self._content_exceeds_view() and event.keysym in PlatformInputBind.SCROLL_KEYS:
                 # 手动执行滚动，因为 Display/Label 模式下 tk_text 为 disabled 状态无法原生导航
                 self._handle_keyboard_scroll(event)
                 return "break"
             return "break"
 
-        # 3. 精细控制只读与标签可选交互
-        if self._text_mode == TextMode.Readonly or (self._text_mode == TextMode.Label and self._selectable):
+        # 3. 精细控制只读与标签/显示可选交互
+        if self._text_mode == TextMode.Readonly or ((self._text_mode == TextMode.Label or self._text_mode == TextMode.Display) and self._selectable):
             # 放行复制与全选组合键：keysym 是 c/a 且 char 为控制字符，表示 Ctrl/Command+C/A
             if event.keysym.lower() in ('c', 'a') and event.char and ord(event.char) < 32:
                 return
@@ -861,10 +875,10 @@ class Text(View):
     def _on_double_click_internal(self, event):
         if self._text_mode == TextMode.Disable:
             return 'break'
-        if self._text_mode == TextMode.Display:
+        if self._text_mode == TextMode.Display and not self._selectable:
             return 'break'
         if self._text_mode == TextMode.Label:
-            if not self._content_exceeds_view():
+            if not self._content_exceeds_view() and not self._selectable:
                 return 'break'
             if not self._selectable:
                 return 'break'
@@ -874,10 +888,10 @@ class Text(View):
     def _on_triple_click_internal(self, event):
         if self._text_mode == TextMode.Disable:
             return 'break'
-        if self._text_mode == TextMode.Display:
+        if self._text_mode == TextMode.Display and not self._selectable:
             return 'break'
         if self._text_mode == TextMode.Label:
-            if not self._content_exceeds_view():
+            if not self._content_exceeds_view() and not self._selectable:
                 return 'break'
             if not self._selectable:
                 return 'break'
@@ -944,7 +958,7 @@ class Text(View):
 
     def set_selectable_copyable(self, selectable):
         self._selectable = bool(selectable)
-        if self._text_mode == TextMode.Label:
+        if self._text_mode in (TextMode.Label, TextMode.Display):
             if not selectable:
                 self._clear_selection()
             self.refresh()
