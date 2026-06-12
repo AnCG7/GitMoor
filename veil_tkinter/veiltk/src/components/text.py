@@ -69,7 +69,7 @@ class Text(View):
         self._block_tab = False
         self._internal_bind_ids = []
         self._show_frame_decoration = True
-        self._selectable = False
+        self._selectable = True
         self._layout_in_progress = False
         self._last_text_width = None
         self._last_text_height = None
@@ -757,6 +757,9 @@ class Text(View):
     def _on_motion_internal(self, event):
         if self._text_mode == TextMode.Disable:
             return 'break'
+        if not self._selectable:
+            # 任何模式下不可选时都阻止拖拽选区
+            return 'break'
         if self._text_mode == TextMode.Display and not self._selectable:
             return 'break'
         if self._text_mode == TextMode.Label:
@@ -768,18 +771,17 @@ class Text(View):
         self._on_motion_event.broadcast(event)
 
     def _on_platform_copy(self, event):
-        if self._text_mode == TextMode.Label and not self._selectable:
-            return 'break'
-        if self._text_mode == TextMode.Display and not self._selectable:
+        if not self._selectable:
             return 'break'
         if self._text_mode == TextMode.Disable:
             return 'break'
-        # 放行 Readonly、Normal、以及 Display/Label 可选模式下的复制
+        # 放行所有可选模式下的复制
         return
 
     def _on_platform_select_all(self, event):
-        if self._text_mode in (TextMode.Readonly, TextMode.Normal) or \
-           (self._text_mode in (TextMode.Label, TextMode.Display) and self._selectable):
+        if not self._selectable:
+            return 'break'
+        if self._text_mode in (TextMode.Readonly, TextMode.Normal, TextMode.Label, TextMode.Display):
             try:
                 self._tk_text.tag_add('sel', '1.0', 'end')
             except tk.TclError:
@@ -875,6 +877,8 @@ class Text(View):
     def _on_double_click_internal(self, event):
         if self._text_mode == TextMode.Disable:
             return 'break'
+        if not self._selectable:
+            return 'break'
         if self._text_mode == TextMode.Display and not self._selectable:
             return 'break'
         if self._text_mode == TextMode.Label:
@@ -887,6 +891,8 @@ class Text(View):
 
     def _on_triple_click_internal(self, event):
         if self._text_mode == TextMode.Disable:
+            return 'break'
+        if not self._selectable:
             return 'break'
         if self._text_mode == TextMode.Display and not self._selectable:
             return 'break'
@@ -935,14 +941,22 @@ class Text(View):
         if mode == self._text_mode:
             return
 
-        prev_state = self._text_mode
         self._text_mode = mode
 
-        if mode == TextMode.Label:
+        # 每种模式有自己明确的默认属性
+        if mode == TextMode.Normal:
+            self._show_frame_decoration = True
+            self._selectable = True
+        elif mode == TextMode.Readonly:
+            self._show_frame_decoration = True
+            self._selectable = True
+        elif mode == TextMode.Display:
+            self._show_frame_decoration = True
+            self._selectable = False
+        elif mode == TextMode.Label:
             self._show_frame_decoration = False
             self._selectable = False
-        elif prev_state == TextMode.Label:
-            self._show_frame_decoration = True
+        # Disable 不改变这两个属性，保持当前值
 
         if mode in (TextMode.Display, TextMode.Disable) or (mode == TextMode.Label and not self._selectable):
             self._clear_selection()
@@ -958,9 +972,9 @@ class Text(View):
 
     def set_selectable_copyable(self, selectable):
         self._selectable = bool(selectable)
+        if not selectable:
+            self._clear_selection()
         if self._text_mode in (TextMode.Label, TextMode.Display):
-            if not selectable:
-                self._clear_selection()
             self.refresh()
 
     def get_mode(self):
