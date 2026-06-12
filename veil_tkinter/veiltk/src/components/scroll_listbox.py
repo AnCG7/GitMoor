@@ -307,6 +307,11 @@ class ScrollListbox(View):
         if disabled:
             # 禁用时不允许获取焦点
             self._tk_frame.config(takefocus=False)
+            # 切换边框为禁用样式
+            self._tk_frame.config(
+                highlightbackground=self._styles.disable.border,
+                highlightcolor=self._styles.disable.border
+            )
             # 如果当前有焦点，让出焦点到下一个组件
             if self._tk_frame.focus_get() == self._tk_frame:
                 try:
@@ -316,6 +321,11 @@ class ScrollListbox(View):
         else:
             # 恢复允许获取焦点
             self._tk_frame.config(takefocus=True)
+            # 恢复边框样式
+            self._tk_frame.config(
+                highlightbackground=self._styles.normal.border,
+                highlightcolor=self._styles.focus.border
+            )
 
     def set_block_tab(self, block):
         self._block_tab = block

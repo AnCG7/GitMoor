@@ -293,6 +293,7 @@ class ListBox(View):
 
             if data_idx < len(self._items):
                 btn._index = data_idx
+                btn._disabled = self._disabled
                 btn.set_text(self._items[data_idx])
 
                 btn.set_selected(data_idx == self._selected_index)
@@ -346,6 +347,8 @@ class ListBox(View):
         self.scroll_by(-1 * delta)
 
     def scroll_by(self, delta):
+        if self._disabled:
+            return
         total_h = len(self._items) * self.get_item_height()
         if total_h <= self.canvas.winfo_height():
             return
@@ -355,6 +358,8 @@ class ListBox(View):
         self._trigger_scroll_event()
 
     def set_scroll_position(self, fraction):
+        if self._disabled:
+            return
         self.canvas.yview_moveto(fraction)
         self._update_viewport()
         self._trigger_scroll_event()
@@ -629,6 +634,11 @@ class ListBox(View):
         if disabled:
             # 禁用时不允许获取焦点
             self._tk_frame.config(takefocus=False)
+            # 切换边框为禁用样式
+            self._tk_frame.config(
+                highlightbackground=self._styles.disable.border,
+                highlightcolor=self._styles.disable.border
+            )
             # 如果当前有焦点，让出焦点到下一个组件
             if self._tk_frame.focus_get() == self._tk_frame:
                 try:
@@ -638,6 +648,11 @@ class ListBox(View):
         else:
             # 恢复允许获取焦点
             self._tk_frame.config(takefocus=True)
+            # 恢复边框样式
+            self._tk_frame.config(
+                highlightbackground=self._styles.normal.border,
+                highlightcolor=self._styles.focus.border
+            )
 
     def is_disabled(self):
         return self._disabled
