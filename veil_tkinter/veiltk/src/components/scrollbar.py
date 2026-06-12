@@ -12,7 +12,6 @@ class ScrollbarState(Enum):
     Press = "press"
     Disable = "disable"
 
-
 class Orientation(Enum):
     Vertical = "vertical"
     Horizontal = "horizontal"
@@ -43,7 +42,6 @@ class Scrollbar(View):
         self.on_click = Event()
 
         super().__init__(master, **kwargs)
-
 
     def _build_widget(self, master=None, **kwargs):
         master_tk = self._get_master_tk()
@@ -77,12 +75,10 @@ class Scrollbar(View):
 
         return self._tk_canvas
 
-
     def _on_destroy(self):
         self._unregister_listeners()
         self._unbind_internal_events()
         super()._on_destroy()
-
 
     def _unbind_internal_events(self):
         for widget, sequence, funcid in self._internal_bind_ids:
@@ -92,7 +88,6 @@ class Scrollbar(View):
                 pass
 
         self._internal_bind_ids.clear()
-
 
     def _config_styles(self):
         current_style = self.styles.get_style()
@@ -120,23 +115,18 @@ class Scrollbar(View):
         }
         self._styles = styles_dict
 
-
     def _register_listeners(self):
         self.styles.on_theme_changed.add_listener(self._on_theme_changed)
 
-
     def _unregister_listeners(self):
         self.styles.on_theme_changed.remove_listener(self._on_theme_changed)
-
 
     def _on_theme_changed(self, theme):
         self._config_styles()
         self.refresh_theme()
 
-
     def _on_configure_internal(self, event):
         self.set_position(self._start, self._end)
-
 
     def _on_button_press(self, event):
         if self._disabled:
@@ -166,7 +156,6 @@ class Scrollbar(View):
 
         self._update_thumb_color()
 
-
     def _on_b1_motion(self, event):
         if self._disabled or not self._dragging:
             return
@@ -175,12 +164,10 @@ class Scrollbar(View):
         adjusted_y = event.y - self._drag_offset_y
         self._scroll_to(adjusted_x, adjusted_y)
 
-
     def _on_button_release(self, event):
         self._pressed = False
         self._dragging = False
         self._update_thumb_color()
-
 
     def _on_enter(self, event):
         if self._disabled:
@@ -188,13 +175,11 @@ class Scrollbar(View):
         self._hovered = True
         self._update_thumb_color()
 
-
     def _on_leave(self, event):
         self._hovered = False
         if not self._dragging:
             self._pressed = False
         self._update_thumb_color()
-
 
     def _scroll_to(self, x, y):
         w, h = self._tk_canvas.winfo_width(), self._tk_canvas.winfo_height()
@@ -205,7 +190,6 @@ class Scrollbar(View):
 
         fraction = max(0, min(fraction, 1.0))
         self.on_scroll.broadcast(fraction)
-
 
     def _update_thumb_color(self):
         if self._disabled:
@@ -231,7 +215,6 @@ class Scrollbar(View):
         self._tk_canvas.itemconfig(self._thumb, fill=color)
 
     def _update_cursor(self):
-
         if self._tk_canvas:
             self._tk_canvas.config(cursor="no" if self._disabled else "arrow")
 
@@ -272,7 +255,6 @@ class Scrollbar(View):
         self._update_thumb_color()
 
     def refresh(self):
-
         self.refresh_theme()
 
     def set_state(self, state):

@@ -97,9 +97,9 @@ class CreateView(BaseView):
 
         self._register_vm_listener(self.create_viewmodel.on_create_completed, self.on_create_completed)
 
-        saved_text, saved_color_type = self.create_viewmodel.get_result()
-        if saved_text:
-            self._result_text = saved_text
+        saved_data, saved_color_type = self.create_viewmodel.get_result()
+        if saved_data:
+            self._result_text = self.create_viewmodel.format_result_text(saved_data)
             self.result_text.set_text(vk.LocalizedText(self._result_text, text_type=vk.LocalizedText.TextType.STRING))
             if saved_color_type is not None:
                 fg_color = Utils.get_label_color(saved_color_type)
@@ -240,23 +240,25 @@ class CreateView(BaseView):
             gitignore_template, enable_lfs, gitattributes_template
         )
 
-    def on_create_completed(self, success, message):
+    def on_create_completed(self, success, message, raw_message):
         if self._loading is not None:
             self._loading.close()
             self._loading = None
 
         if success:
-            self._result_text = f"{vk.LocalizedText('success').get_text()}: {message.get_text()}"
+            result_data = {"prefix_key": "success", "raw_message": raw_message}
+            self._result_text = self.create_viewmodel.format_result_text(result_data)
             self.result_text.set_text(vk.LocalizedText(self._result_text, text_type=vk.LocalizedText.TextType.STRING))
             self._apply_result_color(vk.LabelColorType.Success)
             self.copy_button.hide(True)
-            self.create_viewmodel.save_result(self._result_text, vk.LabelColorType.Success)
+            self.create_viewmodel.save_result(result_data, vk.LabelColorType.Success)
         else:
-            self._result_text = f"{vk.LocalizedText('failed').get_text()}: {message.get_text()}"
+            result_data = {"prefix_key": "failed", "raw_message": raw_message}
+            self._result_text = self.create_viewmodel.format_result_text(result_data)
             self.result_text.set_text(vk.LocalizedText(self._result_text, text_type=vk.LocalizedText.TextType.STRING))
             self._apply_result_color(vk.LabelColorType.Error)
             self.copy_button.hide(False)
-            self.create_viewmodel.save_result(self._result_text, vk.LabelColorType.Error)
+            self.create_viewmodel.save_result(result_data, vk.LabelColorType.Error)
 
     def _apply_result_color(self, color_type):
         """通过 tag 为 result_text 设置前景色"""

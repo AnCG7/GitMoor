@@ -9,13 +9,13 @@ Event = vk.Event
 
 class LocalDataManager:
     _instance = None
-    
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._initialized = False
         return cls._instance
-    
+
     def __init__(self):
         if self._initialized:
             return
@@ -30,15 +30,15 @@ class LocalDataManager:
         self.config = self.load_config()
         self.on_config_changed = Event()
         self.repo_name = ""
-        self.create_result_text = ""
+        self.create_result_data = None
         self.create_result_color_type = None
-    
+
     @classmethod
     def get_instance(cls):
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
-    
+
     def load_config(self):
         if os.path.exists(self.user_setting_path):
             with open(self.user_setting_path, 'r', encoding='utf-8') as f:
@@ -54,7 +54,7 @@ class LocalDataManager:
                 "gitignore_template": "no_template",
                 "gitattributes_template": "no_template"
             }
-        
+
         if os.path.exists(self.app_setting_path):
             with open(self.app_setting_path, 'r', encoding='utf-8') as f:
                 app_config = json.load(f)
@@ -64,11 +64,11 @@ class LocalDataManager:
                 "default_window_size": "900x600",
                 "min_window_size": "800x500"
             }
-        
+
         config = app_config.copy()
         config.update(user_config)
         return config
-    
+
     def save_config(self):
         user_config = {
             "bare_repo_path": self.config.get("bare_repo_path", ""),
@@ -80,44 +80,47 @@ class LocalDataManager:
             "gitignore_template": self.config.get("gitignore_template", "no_template"),
             "gitattributes_template": self.config.get("gitattributes_template", "no_template")
         }
-        
+
         os.makedirs(os.path.dirname(self.user_setting_path), exist_ok=True)
         with open(self.user_setting_path, 'w', encoding='utf-8') as f:
             json.dump(user_config, f, indent=2, ensure_ascii=False)
-    
+
     def get_value_value(self, key, default=None):
         return self.config.get(key, default)
-    
+
     def set_value(self, key, value):
         self.config[key] = value
         self.save_config()
         self.on_config_changed.broadcast(key, value)
-    
+
     def update(self, config_dict):
         self.config.update(config_dict)
         self.save_config()
         for key, value in config_dict.items():
             self.on_config_changed.broadcast(key, value)
-    
+
     def get_config(self):
         return self.config
-    
+
     def save_path(self, path_type, path):
         self.config[path_type] = path
         self.save_config()
-    
+
     def get_path(self, path_type, default=""):
         return self.config.get(path_type, default)
-    
+
     def get_repo_name(self):
         return self.repo_name
-    
+
     def set_repo_name(self, repo_name):
         self.repo_name = repo_name
-    
+
     def get_create_result(self):
-        return self.create_result_text, self.create_result_color_type
-    
-    def set_create_result(self, text, color_type):
-        self.create_result_text = text
+        return self.create_result_data, self.create_result_color_type
+
+    def set_create_result(self, data, color_type):
+        """
+        data: dict, e.g. {"prefix_key": "failed", "raw_message": "bare_repo_path_invalid: C:\\xxx"}
+        """
+        self.create_result_data = data
         self.create_result_color_type = color_type
