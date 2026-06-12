@@ -37,7 +37,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MAIN_PY_PATH = os.path.normpath(os.path.join(PROJECT_DIR, "main.py"))
 ASSETS_DIR = os.path.normpath(os.path.join(PROJECT_DIR, "assets"))
 ICON_DIR = os.path.normpath(os.path.join(ASSETS_DIR, "images", "icon"))
-ICON_SIZES = [16, 32, 64, 256]
+ICON_SIZES = [16, 24, 32, 48, 64, 128, 256]
 OUTPUT_DIR = os.path.join(SCRIPT_DIR, "dist")
 APP_NAME = "GitMoor"
 TEMP_BUILD_DIR = os.path.join(SCRIPT_DIR, "_temp_build")
@@ -214,24 +214,65 @@ def check_icon_sizes(size_map):
 def generate_ico(size_map, output_path):
     from PIL import Image
 
+    # 按尺寸从大到小排列，确保 images[0] 是最大尺寸（256x256）
+    sorted_sizes = sorted(ICON_SIZES, reverse=True)
+
     images = []
-    for s in ICON_SIZES:
+    for s in sorted_sizes:
         filepath = size_map[s]
         with Image.open(filepath) as img:
             img = img.convert("RGBA")
             if img.size != (s, s):
                 img = img.resize((s, s), Image.LANCZOS)
-            images.append(img)
+            images.append(img.copy())
 
     if images:
+        # 不传 sizes 参数！避免 Pillow 用内部低质量缩放覆盖已准备好的各尺寸图片
         images[0].save(
             output_path,
             format="ICO",
-            sizes=[(s, s) for s in ICON_SIZES],
             append_images=images[1:],
         )
 
     return output_path
+
+
+def auto_generate_missing_icons(size_map, missing_sizes):
+    """
+    从已有的最大尺寸图片自动缩放生成缺失尺寸的图标。
+    返回更新后的 size_map。
+    """
+    from PIL import Image
+
+    # 选择最大可用尺寸作为缩放源
+    available_sizes = sorted(size_map.keys(), reverse=True)
+    source_size = available_sizes[0]
+    source_path = size_map[source_size]
+
+    print(f"\n将使用 {source_size}×{source_size} 图片作为缩放源：")
+    print(f"  源文件：{os.path.basename(source_path)}")
+    print(f"  缩放算法：Lanczos（最高质量）")
+    print()
+
+    # 确保临时构建目录存在
+    os.makedirs(TEMP_BUILD_DIR, exist_ok=True)
+
+    with Image.open(source_path) as src_img:
+        src_img = src_img.convert("RGBA")
+        for s in missing_sizes:
+            resized = src_img.resize((s, s), Image.LANCZOS)
+            generated_path = os.path.join(TEMP_BUILD_DIR, f"icon_generated_{s}.png")
+            resized.save(generated_path, format="PNG")
+            size_map[s] = generated_path
+            print(f"  [已生成] {s}×{s} → {generated_path}")
+
+    print()
+    print("缺失尺寸自动生成完成！")
+    print(f"\n  提示：自动生成的中间 PNG 文件保存在：")
+    print(f"  {os.path.abspath(TEMP_BUILD_DIR)}")
+    print(f"  如果您需要单独使用这些图片，可在构建完成前从该目录取用。")
+    print(f"  （构建结束后该临时目录将被清理）")
+    return size_map
 
 
 def phase_generate_icon():
@@ -256,18 +297,64 @@ def phase_generate_icon():
             print("所有图标尺寸齐全！")
             break
 
-        print(f"\n缺少以下尺寸的图标图片：{missing_sizes}")
-        print("请将对应尺寸的图片放入 assets/images/icon 目录后继续。")
+        # 检查是否至少有一个可用尺寸作为缩放源
+        if not size_map:
+            print("\n错误：未找到任何可用的图标图片！")
+            print("请将至少一张正方形图标图片放入 assets/images/icon 目录。")
+            print()
+            choice = input("输入 c 继续检查 / 输入 q 退出: ").strip().lower()
+            if choice == "q":
+                print("用户选择退出，工具中止运行。")
+                sys.exit(0)
+            elif choice == "c":
+                print("重新检查图片尺寸...")
+                continue
+            else:
+                print("无效输入，请输入 c 或 q。")
+                continue
+
+        # 有部分尺寸缺失，提供自动生成选项
+        available_sizes = sorted(size_map.keys(), reverse=True)
+        source_size = available_sizes[0]
+        source_file = os.path.basename(size_map[source_size])
+
+        print(f"\n缺少以下尺寸的图标图片：")
+        for s in missing_sizes:
+            print(f"  - {s}×{s}")
+
+        print(f"\n可以从已有的最大尺寸图片自动生成缺失尺寸：")
+        print(f"  源图片：{source_file}（{source_size}×{source_size}）")
+        print(f"  缩放算法：Lanczos（最高质量）")
         print()
-        choice = input("输入 c 继续检查 / 输入 q 退出: ").strip().lower()
-        if choice == "q":
+        print("请选择：")
+        print("  a - 自动从源图片缩放生成缺失尺寸（推荐）")
+        print("  m - 手动提供，将图片放入 assets/images/icon 后重新检查")
+        print("  q - 退出")
+        print()
+        choice = input("请输入选择 (a/m/q): ").strip().lower()
+
+        if choice == "a":
+            size_map = auto_generate_missing_icons(size_map, missing_sizes)
+            break
+        elif choice == "m":
+            print("\n请将对应尺寸的图片放入 assets/images/icon 目录后继续。")
+            print()
+            sub_choice = input("输入 c 继续检查 / 输入 q 退出: ").strip().lower()
+            if sub_choice == "q":
+                print("用户选择退出，工具中止运行。")
+                sys.exit(0)
+            elif sub_choice == "c":
+                print("重新检查图片尺寸...")
+                continue
+            else:
+                print("无效输入，重新检查图片尺寸...")
+                continue
+        elif choice == "q":
             print("用户选择退出，工具中止运行。")
             sys.exit(0)
-        elif choice == "c":
-            print("重新检查图片尺寸...")
-            continue
         else:
-            print("无效输入，请输入 c 或 q。")
+            print("无效输入，请输入 a、m 或 q。")
+            continue
 
     print(f"\n正在生成 .ico 文件...")
     os.makedirs(TEMP_BUILD_DIR, exist_ok=True)
