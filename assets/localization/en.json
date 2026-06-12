@@ -34,7 +34,7 @@
   "software_summary_title": "Software Summary",
   "software_summary": "A lightweight Git desktop tool that pairs bare repositories with working repositories. Supports local disk and LAN shared directories, making it easy to set up a local Git remote repository.",
   "system_requirements_title": "System Requirements",
-  "system_requirements": "Based on Tkinter (Python standard library, no additional installation required), with a custom-built VeilTK UI toolkit for the interface\n\nRequirements:\n- Git 2.0+ (Tested with Git 2.51.0)\n- Git LFS 2.10+ (Tested with Git LFS 3.7.0)\n- Python 3.8+ (Tested with Python 3.12)",
+  "system_requirements": "Based on Tkinter (Python standard library, no additional installation required), with a custom-built VeilTk UI toolkit for the interface\n\nRequirements:\n- Git 2.0+ (Tested with Git 2.51.0)\n- Git LFS 2.10+ (Tested with Git LFS 3.7.0)\n- Python 3.8+ (Tested with Python 3.12)",
   "repository_link_title": "Repository Link",
   "repository_link_text": "Project Repository Link",
   "repository_link": "[GitHub Repository](https://github.com/AnCG7/GitMoor)",

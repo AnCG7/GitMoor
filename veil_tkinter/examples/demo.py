@@ -426,7 +426,7 @@ class LabelPage(vk.Frame):
 
 
 def main():
-    app = vk.App(title=vk.LocalizedText("VeilTK 组件演示"), width=900, height=600)
+    app = vk.App(title=vk.LocalizedText("VeilTk 组件演示"), width=900, height=600)
     app.center_on_screen()
 
     icon_path = os.path.join(demo_dir, "testicon.png")
@@ -438,7 +438,7 @@ def main():
     header_frame = vk.Frame(app)
     header_frame.pack(fill='x', pady=10, padx=10)
 
-    title_label = vk.Label(header_frame, text=vk.LocalizedText("VeilTK 组件演示"))
+    title_label = vk.Label(header_frame, text=vk.LocalizedText("VeilTk 组件演示"))
     title_label.pack(side='left')
 
     theme_switcher = ThemeSwitcher(header_frame)

@@ -1,6 +1,6 @@
 # GitMoor — 本地 Git 仓库配对工具
 
-轻量级 Git 桌面小工具，裸仓库（bare）与工作仓库（work）配对。支持本地磁盘、局域网共享目录，轻松搭建本地 Git 远程仓库。
+轻量级 Git 桌面自用小工具，裸仓库（bare）与工作仓库（work）配对。支持本地磁盘、局域网共享目录，轻松搭建本地 Git 远程仓库。
 
 
 ## 功能特性
@@ -18,7 +18,7 @@
 | Git | 2.0+ | 测试环境 Git 2.51 |
 | Git LFS | 2.10+（可选） | 测试环境 Git LFS 3.7 |
 
-> **不需要安装任何第三方 Python 包** — GUI 框架基于 Tkinter（Python 标准库），UI 组件库 [VeilTK](#关于-veiltk) 也是零外部依赖。
+> **不需要安装任何第三方 Python 包** — GUI 框架基于 Tkinter（Python 标准库），UI 组件库 [VeilTk](#关于-veiltk) 也是零外部依赖。
 
 ## 快速开始
 
@@ -51,7 +51,7 @@ GitMoor/
 ├── app_setting.json               # 默认配置（只读，打包进程序内部）
 ├── assets/                        # 运行时资源（打包后用户可直接修改）
 ├── src/                           # 应用源码
-├── veil_tkinter/                  # VeilTK — 自研 UI 组件库（详见下方说明）
+├── veil_tkinter/                  # VeilTk — 自研 UI 组件库（详见下方说明）
 ├── external_tools/                # 外部工具
 ├── dev/                           # 开发期资源（不参与打包分发）
 └── saved/                         # 用户运行时保存的数据，运行时自动创建

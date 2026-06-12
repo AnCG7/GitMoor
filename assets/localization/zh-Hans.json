@@ -34,7 +34,7 @@
   "software_summary_title": "软件概要",
   "software_summary": "轻量级 Git 桌面工具，裸仓库（bare）与工作仓库（work）配对。支持本地磁盘、局域网共享目录，轻松搭建本地 Git 远程仓库。",
   "system_requirements_title": "系统说明",
-  "system_requirements": "基于Tkinter（Python标准库，无需其他安装），界面采用自行封装的VeilTK组件库\n\n系统要求：\n- Git 2.0+（测试环境：Git 2.51.0）\n- Git LFS 2.10+（测试环境：Git LFS 3.7.0）\n- Python 3.8+（测试环境：Python 3.12）",
+  "system_requirements": "基于Tkinter（Python标准库，无需其他安装），界面采用自行封装的VeilTk组件库\n\n系统要求：\n- Git 2.0+（测试环境：Git 2.51.0）\n- Git LFS 2.10+（测试环境：Git LFS 3.7.0）\n- Python 3.8+（测试环境：Python 3.12）",
   "repository_link_title": "仓库链接",
   "repository_link_text": "项目仓库链接",
   "repository_link": "[GitHub 仓库](https://github.com/AnCG7/GitMoor)",
