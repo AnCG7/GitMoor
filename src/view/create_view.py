@@ -81,8 +81,7 @@ class CreateView(BaseView):
 
         self.result_text = vk.Text(result_frame, text=vk.LocalizedText("", text_type=vk.LocalizedText.TextType.STRING), wrap_mode=vk.TextWrapMode.Char)
         self.result_text.set_mode(vk.TextMode.Label)
-        self.result_text.set_selectable(True)
-        self.result_text.set_copyable(True)
+        self.result_text.set_selectable_copyable(True)
         self.result_text.grid(row=0, column=0, sticky='ew')
 
         self.copy_button = vk.NormalButton(

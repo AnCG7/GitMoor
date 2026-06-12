@@ -70,7 +70,6 @@ class Text(View):
         self._internal_bind_ids = []
         self._show_frame_decoration = True
         self._selectable = False
-        self._copyable = False
         self._layout_in_progress = False
         self._last_text_width = None
         self._last_text_height = None
@@ -234,7 +233,7 @@ class Text(View):
 
     def _block_modify_events(self, event):
         """当处于非可编辑模式时，彻底截断任何虚拟修改事件"""
-        if self._text_mode in (TextMode.Readonly, TextMode.Display, TextMode.Disable) or (self._text_mode == TextMode.Label and not self._copyable):
+        if self._text_mode in (TextMode.Readonly, TextMode.Display, TextMode.Disable) or (self._text_mode == TextMode.Label and not self._selectable):
             return 'break'
 
     def _add_parent_to_bindtags(self, widget, parent):
@@ -289,7 +288,11 @@ class Text(View):
             return
         self._last_style_key = style_key
 
-        takefocus_val = 0
+        # 动态控制内层 _tk_text 的 takefocus：Label 模式内容未超出时设为 0，杜绝 Tab/点击意外聚焦
+        if self._text_mode == TextMode.Label and not self._content_exceeds_view():
+            takefocus_val = 0
+        else:
+            takefocus_val = 0
         cursor = 'xterm'
         tk_state = 'normal'
 
@@ -693,8 +696,12 @@ class Text(View):
             return 'break'
         if self._text_mode == TextMode.Display:
             return 'break'
-        if self._text_mode == TextMode.Label and not self._selectable:
-            return 'break'
+        if self._text_mode == TextMode.Label:
+            # 内容未超出范围时，像 Label 一样不操作焦点，彻底截断事件
+            if not self._content_exceeds_view():
+                return 'break'
+            if not self._selectable:
+                return 'break'
 
         # 只读模式及Label可选现在完全托管给原生选择流，无需手动进行 tag_add 计算
         if not self._has_focus():
@@ -704,6 +711,9 @@ class Text(View):
         self._on_press_event.broadcast(event)
 
         if event.widget == self._tk_frame_b:
+            # 防御性检查：Label 模式内容未超出时不主动 focus_set()
+            if self._text_mode == TextMode.Label and not self._content_exceeds_view():
+                return 'break'
             self.focus_set()
             text_x, text_y = self._text_rel_xy(event)
             text_y = max(0, min(text_y, self._tk_text.winfo_height() - 1))
@@ -720,8 +730,11 @@ class Text(View):
             return 'break'
         if self._text_mode == TextMode.Display:
             return 'break'
-        if self._text_mode == TextMode.Label and not self._selectable:
-            return 'break'
+        if self._text_mode == TextMode.Label:
+            if not self._content_exceeds_view():
+                return 'break'
+            if not self._selectable:
+                return 'break'
 
         if self._has_focus():
             self._interaction_state = TextInteractionState.Focus
@@ -735,13 +748,16 @@ class Text(View):
             return 'break'
         if self._text_mode == TextMode.Display:
             return 'break'
-        if self._text_mode == TextMode.Label and not self._selectable:
-            return 'break'
+        if self._text_mode == TextMode.Label:
+            if not self._content_exceeds_view():
+                return 'break'
+            if not self._selectable:
+                return 'break'
         # 移除了所有冗余的多 Bug 选区计算，原生选择机制自动完美处理拖拽、缩小和自动边缘滚动
         self._on_motion_event.broadcast(event)
 
     def _on_platform_copy(self, event):
-        if self._text_mode == TextMode.Label and not self._copyable:
+        if self._text_mode == TextMode.Label and not self._selectable:
             return 'break'
         if self._text_mode in (TextMode.Display, TextMode.Disable):
             return 'break'
@@ -847,8 +863,11 @@ class Text(View):
             return 'break'
         if self._text_mode == TextMode.Display:
             return 'break'
-        if self._text_mode == TextMode.Label and not self._selectable:
-            return 'break'
+        if self._text_mode == TextMode.Label:
+            if not self._content_exceeds_view():
+                return 'break'
+            if not self._selectable:
+                return 'break'
         # 托管给原生处理：双击自动精准选词，后续拖动按词优雅流式扩展
         self._on_double_click_event.broadcast(event)
 
@@ -857,8 +876,11 @@ class Text(View):
             return 'break'
         if self._text_mode == TextMode.Display:
             return 'break'
-        if self._text_mode == TextMode.Label and not self._selectable:
-            return 'break'
+        if self._text_mode == TextMode.Label:
+            if not self._content_exceeds_view():
+                return 'break'
+            if not self._selectable:
+                return 'break'
         # 托管给原生处理：三击精准选择整行，后续拖动按行流式扩展
         self._on_triple_click_event.broadcast(event)
 
@@ -905,7 +927,6 @@ class Text(View):
         if mode == TextMode.Label:
             self._show_frame_decoration = False
             self._selectable = False
-            self._copyable = False
         elif prev_state == TextMode.Label:
             self._show_frame_decoration = True
 
@@ -921,16 +942,11 @@ class Text(View):
     def set_disabled(self, disabled):
         self.set_mode(TextMode.Disable if disabled else TextMode.Normal)
 
-    def set_selectable(self, selectable):
+    def set_selectable_copyable(self, selectable):
         self._selectable = bool(selectable)
         if self._text_mode == TextMode.Label:
             if not selectable:
                 self._clear_selection()
-            self.refresh()
-
-    def set_copyable(self, copyable):
-        self._copyable = bool(copyable)
-        if self._text_mode == TextMode.Label:
             self.refresh()
 
     def get_mode(self):

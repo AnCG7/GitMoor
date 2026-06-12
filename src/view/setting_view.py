@@ -38,8 +38,7 @@ class SettingView(BaseView):
 
         self.git_check_text = vk.Text(self, text=vk.LocalizedText("git_path_not_set"), wrap_mode=vk.TextWrapMode.Char)
         self.git_check_text.set_mode(vk.TextMode.Label)
-        self.git_check_text.set_selectable(True)
-        self.git_check_text.set_copyable(True)
+        self.git_check_text.set_selectable_copyable(True)
         self.git_check_text.grid(row=3, column=0, columnspan=3, sticky='ew', pady=self.default_pady, padx=self.default_padx)
 
         self._register_vm_listener(self.setting_viewmodel.on_settings_updated, self.on_settings_updated)
