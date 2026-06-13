@@ -75,7 +75,11 @@ class Text(View):
         self._last_text_height = None
         self._scrollbar_stable = False
         self._mapped = False
+        self._scrollbar_update_pending = False
+        self._scrollbar_update_running = False
+        self._ignore_next_configure = False
         self._is_global_click_bound = False
+
         self._global_click_id = None
 
         # Events
@@ -186,7 +190,12 @@ class Text(View):
         self._hack_internal_components()
 
         self._tk_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        if self._scrollbar_mode != ScrollbarMode.Never:
+            self._scrollbar.set_visual_hidden(True)
+            self._scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self._tk_frame_b.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+
 
     def _hack_internal_components(self):
         self._tk_text.config(takefocus=0)
@@ -385,9 +394,7 @@ class Text(View):
             self._scrollbar.set_disabled(self._text_mode == TextMode.Disable)
 
         if struct_changed:
-            self._update_scrollbar_state()
-            if self._scrollbar_visible:
-                self._force_scrollbar_position()
+            self._schedule_scrollbar_state_update()
 
         if tk_state == 'disabled':
             self._tk_text.config(state='disabled')
@@ -401,7 +408,8 @@ class Text(View):
                 end = float(args[1])
                 content_exceeds = not (start <= 0.001 and end >= 0.999)
                 if content_exceeds and self._scrollbar_mode == ScrollbarMode.Auto and self._scrollbar_visible is not True:
-                    self._update_scrollbar_state(show_only=True)
+                    if not self._scrollbar_update_running:
+                        self._schedule_scrollbar_state_update()
                 if self._scrollbar_visible or self._scrollbar_mode == ScrollbarMode.Always:
                     self._scrollbar.set_position(start, end)
             except (ValueError, tk.TclError):
@@ -426,7 +434,43 @@ class Text(View):
         except (tk.TclError, ValueError):
             pass
 
+    def _is_scrollbar_in_layout(self):
+        try:
+            return bool(self._scrollbar is not None and self._scrollbar._tk_canvas.winfo_manager())
+        except tk.TclError:
+            return False
+
+    def _prepare_scrollbar_measurement_layout(self):
+        if self._scrollbar is None or self._scrollbar_mode == ScrollbarMode.Never:
+            return
+        try:
+            if self._scrollbar_mode == ScrollbarMode.Auto:
+                self._scrollbar.set_visual_hidden(True)
+            if not self._is_scrollbar_in_layout():
+                self._layout_in_progress = True
+                self._tk_frame_b.pack_forget()
+                self._scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+                self._tk_frame_b.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+                self._tk_frame.after_idle(self._clear_layout_flag)
+        except tk.TclError:
+            pass
+
+    def _hide_scrollbar_from_layout(self):
+        if self._scrollbar is None:
+            return
+        try:
+            self._scrollbar.set_visual_hidden(True)
+            if self._is_scrollbar_in_layout():
+                self._layout_in_progress = True
+                self._scrollbar.pack_forget()
+                self._tk_frame.after_idle(self._clear_layout_flag)
+            self._scrollbar_visible = False
+        except tk.TclError:
+            pass
+
+
     def _on_mouse_wheel(self, event, delta):
+
         if not self._mouse_inside:
             return
 
@@ -458,47 +502,69 @@ class Text(View):
         except tk.TclError:
             pass
 
-    def _update_scrollbar_state(self, *args, show_only=False):
+    def _schedule_scrollbar_state_update(self):
+        if self._scrollbar_update_running or self._scrollbar_update_pending:
+            return
+        self._scrollbar_update_pending = True
+        try:
+            self._tk_frame.after_idle(self._run_scheduled_scrollbar_state_update)
+        except tk.TclError:
+            self._scrollbar_update_pending = False
+
+
+    def _run_scheduled_scrollbar_state_update(self):
+        if self._scrollbar_update_running:
+            return
+        self._scrollbar_update_pending = False
+        self._scrollbar_update_running = True
+        try:
+            self._update_scrollbar_state()
+        finally:
+            self._scrollbar_update_running = False
+            self._scrollbar_update_pending = False
+            # 关键修复：更新结束后设置 "忽略下一次 Configure" 标记
+            # 因为 pack/pack_forget 引发的异步布局变化会产生一个 Configure 事件，
+            # 那个事件的尺寸变化仅仅是 scrollbar 自身占据/释放的宽度，不代表真正的外部尺寸变化
+            self._ignore_next_configure = True
+
+    def _update_scrollbar_state(self, *args):
+
         if not hasattr(self, '_scrollbar') or self._scrollbar is None:
             return
         if not self._mapped:
             return
 
-        try:
-            yview = self._tk_text.yview()
-            if len(yview) != 2:
-                return
-            content_exceeds = not (yview[0] <= 0.001 and yview[1] >= 0.999)
-        except tk.TclError:
-            content_exceeds = False
+        if self._scrollbar_mode == ScrollbarMode.Never:
+            self._hide_scrollbar_from_layout()
+            self._scrollbar_stable = False
+            self._scrollbar.set_state(ScrollbarState.Normal)
+            return
 
-        needs_show = False
         if self._scrollbar_mode == ScrollbarMode.Always:
-            needs_show = True
-        elif self._scrollbar_mode == ScrollbarMode.Never:
-            needs_show = False
-        elif self._scrollbar_mode == ScrollbarMode.Auto:
-            needs_show = content_exceeds
-
-        if needs_show and self._scrollbar_visible is not True:
-            self._layout_in_progress = True
-            self._tk_frame_b.pack_forget()
-            self._scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-            self._tk_frame_b.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            self._prepare_scrollbar_measurement_layout()
+            self._scrollbar.set_visual_hidden(False)
             self._scrollbar_visible = True
             self._scrollbar_stable = True
-            self._tk_frame.after_idle(self._clear_layout_flag)
-        elif not needs_show and self._scrollbar_visible is not False and not show_only:
-            # 只有非 show_only 调用（即内容变化/手动设置）才允许隐藏
-            self._layout_in_progress = True
-            if self._scrollbar_visible is True:
-                self._scrollbar.pack_forget()
+        else:
+            self._prepare_scrollbar_measurement_layout()
+            try:
+                self._tk_frame.update_idletasks()
+                yview = self._tk_text.yview()
+                if len(yview) != 2:
+                    return
+                content_exceeds = not (yview[0] <= 0.001 and yview[1] >= 0.999)
+            except tk.TclError:
+                content_exceeds = False
+
+            if content_exceeds:
+                self._scrollbar.set_visual_hidden(False)
+                self._scrollbar_visible = True
+                self._scrollbar_stable = True
             else:
-                self._tk_frame_b.pack_forget()
-                self._tk_frame_b.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            self._scrollbar_visible = False
-            self._scrollbar_stable = False
-            self._tk_frame.after_idle(self._clear_layout_flag)
+                self._hide_scrollbar_from_layout()
+                self._scrollbar_stable = False
+
+
 
         if self._scrollbar_visible and self._has_focus():
             if self._text_mode in (TextMode.Normal, TextMode.Readonly, TextMode.Display, TextMode.Label):
@@ -509,6 +575,7 @@ class Text(View):
 
         if self._scrollbar_visible:
             self._force_scrollbar_position()
+
 
     def _clear_layout_flag(self):
         self._layout_in_progress = False
@@ -536,8 +603,9 @@ class Text(View):
                 self._tk_text.edit_modified(False)
                 content = self._tk_text.get('1.0', 'end-1c')
                 self.on_text_changed.broadcast(content)
-                self._update_scrollbar_state()
+                self._schedule_scrollbar_state_update()
                 self._update_select_color()
+
         except tk.TclError:
             pass
 
@@ -929,7 +997,13 @@ class Text(View):
     def _on_configure_internal(self, event):
         # 如果是自己 pack/pack_forget 导致的布局变化，只记录尺寸但不触发检查
         w, h = event.width, event.height
-        if self._layout_in_progress:
+        if self._layout_in_progress or self._scrollbar_update_running:
+            self._last_text_width = w
+            self._last_text_height = h
+            return
+        # 忽略由 scrollbar pack/pack_forget 引发的第一个 Configure 事件
+        if self._ignore_next_configure:
+            self._ignore_next_configure = False
             self._last_text_width = w
             self._last_text_height = h
             return
@@ -941,18 +1015,16 @@ class Text(View):
                 self._mapped = True
                 if self._scrollbar_visible is None:
                     self._scrollbar_visible = False
-                self._update_scrollbar_state()
-                self._tk_frame.after_idle(lambda: self._update_scrollbar_state(show_only=True))
+                self._schedule_scrollbar_state_update()
             return
         # 只在实际尺寸变化时才检查 scrollbar 状态
         if w == self._last_text_width and h == self._last_text_height:
             return
         self._last_text_width = w
         self._last_text_height = h
-        # Configure 驱动的检查只允许「显示」scrollbar，不允许「隐藏」
-        # 隐藏只在内容变化时触发，避免布局震荡
-        self._update_scrollbar_state(show_only=True)
-        self._tk_frame.after_idle(lambda: self._update_scrollbar_state(show_only=True))
+        # 尺寸变化后重新进入「scrollbar 占位测量 -> 稳定后决策」流程
+        self._schedule_scrollbar_state_update()
+
         self._on_configure_event.broadcast(None)
 
     def _on_double_click_internal(self, event):
@@ -1133,6 +1205,8 @@ class Text(View):
             raise TypeError("mode 参数必须是 TextWrapMode 枚举类型")
         self._wrap_mode = mode
         self._tk_text.config(wrap=mode.to_tk())
+        self._schedule_scrollbar_state_update()
+
 
     def is_disabled(self):
         return self._text_mode == TextMode.Disable
@@ -1238,8 +1312,7 @@ class Text(View):
             self._tk_text.config(state='disabled')
 
         self._update_select_color()
-        self._update_scrollbar_state()
-        self._tk_text.after_idle(self._update_scrollbar_state)
+        self._schedule_scrollbar_state_update()
 
     def see(self, index):
         return self._tk_text.see(index)

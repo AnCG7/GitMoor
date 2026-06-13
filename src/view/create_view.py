@@ -93,7 +93,7 @@ class CreateView(BaseView):
             size=vk.ButtonSize.Small
         )
         self.copy_button.on_click.add_listener(self.copy_error_message)
-        self.copy_button.grid(row=0, column=1, padx=(10, 0), sticky='e')
+        self.copy_button.grid(row=0, column=1, padx=(10, 0), sticky='ne')
         self.copy_button.hide(True)
 
         self._register_vm_listener(self.create_viewmodel.on_create_completed, self.on_create_completed)

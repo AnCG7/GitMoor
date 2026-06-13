@@ -27,6 +27,7 @@ class Scrollbar(View):
         self._styles = None
         self._thumb = None
         self._disabled = False
+        self._visual_hidden = False
         self._pressed = False
         self._hovered = False
         self._external_state = ScrollbarState.Normal
@@ -49,7 +50,9 @@ class Scrollbar(View):
 
         if self._orientation == Orientation.Vertical:
             self._kwargs.setdefault("width", 10)
+            self._kwargs.setdefault("height", 1)
         else:
+            self._kwargs.setdefault("width", 1)
             self._kwargs.setdefault("height", 10)
 
         default_kwargs = {
@@ -93,6 +96,7 @@ class Scrollbar(View):
         current_style = self.styles.get_style()
         styles_dict = {
             'normal': {
+                'bg': current_style.component.scrollbar.normal.bg.color,
                 'thumb': current_style.component.scrollbar.normal.thumb.color,
                 'trough': current_style.component.scrollbar.normal.trough.color
             },
@@ -129,7 +133,7 @@ class Scrollbar(View):
         self.set_position(self._start, self._end)
 
     def _on_button_press(self, event):
-        if self._disabled:
+        if self._disabled or self._visual_hidden:
             return
 
         self.on_click.broadcast(event)
@@ -157,7 +161,7 @@ class Scrollbar(View):
         self._update_thumb_color()
 
     def _on_b1_motion(self, event):
-        if self._disabled or not self._dragging:
+        if self._disabled or self._visual_hidden or not self._dragging:
             return
 
         adjusted_x = event.x - self._drag_offset_x
@@ -167,10 +171,12 @@ class Scrollbar(View):
     def _on_button_release(self, event):
         self._pressed = False
         self._dragging = False
+        if self._disabled or self._visual_hidden:
+            return
         self._update_thumb_color()
 
     def _on_enter(self, event):
-        if self._disabled:
+        if self._disabled or self._visual_hidden:
             return
         self._hovered = True
         self._update_thumb_color()
@@ -192,7 +198,10 @@ class Scrollbar(View):
         self.on_scroll.broadcast(fraction)
 
     def _update_thumb_color(self):
-        if self._disabled:
+        if self._visual_hidden:
+            color = self._styles['normal']['bg']
+            trough_color = self._styles['normal']['bg']
+        elif self._disabled:
             color = self._styles['disable']['thumb']
             trough_color = self._styles['disable']['trough']
         elif self._pressed:
@@ -216,7 +225,13 @@ class Scrollbar(View):
 
     def _update_cursor(self):
         if self._tk_canvas:
-            self._tk_canvas.config(cursor="no" if self._disabled else "arrow")
+            if self._visual_hidden:
+                cursor = ""
+            elif self._disabled:
+                cursor = "no"
+            else:
+                cursor = "arrow"
+            self._tk_canvas.config(cursor=cursor)
 
     def set_position(self, start, end):
         start, end = float(start), float(end)
@@ -269,6 +284,19 @@ class Scrollbar(View):
 
     def set_disabled(self, disabled):
         self._disabled = disabled
+        self._update_thumb_color()
+        self._update_cursor()
+
+    def set_visual_hidden(self, hidden):
+        """视觉隐藏：仍保留布局占位，不响应交互，不等同于 disabled。"""
+        hidden = bool(hidden)
+        if self._visual_hidden == hidden:
+            return
+        self._visual_hidden = hidden
+        if hidden:
+            self._pressed = False
+            self._hovered = False
+            self._dragging = False
         self._update_thumb_color()
         self._update_cursor()
 
