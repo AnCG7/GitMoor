@@ -22,6 +22,7 @@ class CreateView(BaseView):
 
     def on_create(self):
         self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(7, weight=1)
 
         bare_label = vk.Label(self, text=vk.LocalizedText("bare_repo_path"))
         bare_label.grid(row=0, column=0, sticky='w', pady=self.default_pady, padx=self.default_padx)
@@ -76,13 +77,14 @@ class CreateView(BaseView):
         self.execute_button.grid(row=6, column=1, sticky='e', pady=20, padx=6)
 
         result_frame = vk.Frame(self)
-        result_frame.grid(row=7, column=0, columnspan=3, sticky='ew', pady=10, padx=6)
+        result_frame.grid(row=7, column=0, columnspan=3, sticky='nsew', pady=10, padx=6)
         result_frame.grid_columnconfigure(0, weight=1)
+        result_frame.grid_rowconfigure(0, weight=1)
 
         self.result_text = vk.Text(result_frame, text=vk.LocalizedText("", text_type=vk.LocalizedText.TextType.STRING), wrap_mode=vk.TextWrapMode.Char)
         self.result_text.set_mode(vk.TextMode.Label)
         self.result_text.set_selectable_copyable(True)
-        self.result_text.grid(row=0, column=0, sticky='ew')
+        self.result_text.grid(row=0, column=0, sticky='nsew')
 
         self.copy_button = vk.NormalButton(
             result_frame,

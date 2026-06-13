@@ -399,6 +399,9 @@ class Text(View):
             try:
                 start = float(args[0])
                 end = float(args[1])
+                content_exceeds = not (start <= 0.001 and end >= 0.999)
+                if content_exceeds and self._scrollbar_mode == ScrollbarMode.Auto and self._scrollbar_visible is not True:
+                    self._update_scrollbar_state(show_only=True)
                 if self._scrollbar_visible or self._scrollbar_mode == ScrollbarMode.Always:
                     self._scrollbar.set_position(start, end)
             except (ValueError, tk.TclError):
@@ -412,6 +415,7 @@ class Text(View):
 
     def _on_scrollbar_click(self, event):
         self.focus_set()
+
 
     def _force_scrollbar_position(self):
         try:
@@ -938,6 +942,7 @@ class Text(View):
                 if self._scrollbar_visible is None:
                     self._scrollbar_visible = False
                 self._update_scrollbar_state()
+                self._tk_frame.after_idle(lambda: self._update_scrollbar_state(show_only=True))
             return
         # 只在实际尺寸变化时才检查 scrollbar 状态
         if w == self._last_text_width and h == self._last_text_height:
@@ -947,6 +952,7 @@ class Text(View):
         # Configure 驱动的检查只允许「显示」scrollbar，不允许「隐藏」
         # 隐藏只在内容变化时触发，避免布局震荡
         self._update_scrollbar_state(show_only=True)
+        self._tk_frame.after_idle(lambda: self._update_scrollbar_state(show_only=True))
         self._on_configure_event.broadcast(None)
 
     def _on_double_click_internal(self, event):
@@ -956,6 +962,7 @@ class Text(View):
             return 'break'
         if self._text_mode == TextMode.Display and not self._selectable:
             return 'break'
+
         if self._text_mode == TextMode.Label:
             if not self._content_exceeds_view() and not self._selectable:
                 return 'break'
@@ -1230,6 +1237,10 @@ class Text(View):
         if current_state == 'disabled':
             self._tk_text.config(state='disabled')
 
+        self._update_select_color()
+        self._update_scrollbar_state()
+        self._tk_text.after_idle(self._update_scrollbar_state)
+
     def see(self, index):
         return self._tk_text.see(index)
 
@@ -1241,6 +1252,7 @@ class Text(View):
             result = self._tk_text.count('1.0', 'end', 'displaylines')
             if isinstance(result, tuple):
                 return result[0] if result else 1
+
             return result if result else 1
         except tk.TclError:
             return 1
