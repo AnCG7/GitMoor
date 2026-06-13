@@ -569,11 +569,15 @@ class Text(View):
         self._interaction_state = TextInteractionState.Focus
         # Label 模式：有焦点且可选时显示边框装饰
         if self._text_mode == TextMode.Label and self._selectable:
+            needs_decoration_restore = not self._show_frame_decoration
             self._show_frame_decoration = True
             if hasattr(self, '_last_style_key'):
                 del self._last_style_key
             if hasattr(self, '_last_struct_key'):
                 del self._last_struct_key
+            # 即使 interaction_state 没有改变，也需要刷新样式以恢复边框装饰
+            if needs_decoration_restore:
+                self._update_styles()
         if self._interaction_state != previous:
             self._update_styles()
         if self._tk_frame.focus_get() != self._tk_text:
@@ -753,6 +757,16 @@ class Text(View):
                 return 'break'
             if not self._selectable:
                 return 'break'
+
+        # Label 模式、可选、内容超出：焦点仍在组件内但装饰被隐藏时，点击内容恢复装饰
+        if self._text_mode == TextMode.Label and self._selectable and not self._show_frame_decoration:
+            self._show_frame_decoration = True
+            self._interaction_state = TextInteractionState.Focus
+            if hasattr(self, '_last_style_key'):
+                del self._last_style_key
+            if hasattr(self, '_last_struct_key'):
+                del self._last_struct_key
+            self._update_styles()
 
         # 只读模式及Label可选现在完全托管给原生选择流，无需手动进行 tag_add 计算
         if not self._has_focus():
@@ -1041,6 +1055,7 @@ class Text(View):
                     self._update_styles()
                     self._deflect_focus()
                 else:
+                    self._interaction_state = TextInteractionState.Idle
                     self._update_styles()
         except tk.TclError:
             pass
