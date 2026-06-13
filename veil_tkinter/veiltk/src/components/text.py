@@ -75,6 +75,8 @@ class Text(View):
         self._last_text_height = None
         self._scrollbar_stable = False
         self._mapped = False
+        self._is_global_click_bound = False
+        self._global_click_id = None
 
         # Events
         self.on_focus_in = Event()
@@ -140,6 +142,7 @@ class Text(View):
         self._bind_events()
         self._register_listeners()
         self._update_styles()
+        self._update_global_click_binding()
 
         return self._tk_frame
 
@@ -369,7 +372,7 @@ class Text(View):
             takefocus=takefocus_val,
             insertbackground=style.fg if show_caret else style.bg,
             insertwidth=2 if show_caret else 0,
-            selectbackground=self._styles.selected_font.bg,
+            selectbackground=style.bg if self._is_content_empty() else self._styles.selected_font.bg,
             selectforeground=self._styles.selected_font.fg,
         )
 
@@ -489,6 +492,23 @@ class Text(View):
     def _clear_layout_flag(self):
         self._layout_in_progress = False
 
+    def _is_content_empty(self) -> bool:
+        """判断文本内容是否为空（排除 Tkinter 末尾隐形换行符）"""
+        try:
+            return self._tk_text.get('1.0', 'end-1c') == ''
+        except tk.TclError:
+            return True
+
+    def _update_select_color(self):
+        """根据内容是否为空，直接更新选区背景色（绕过 _update_styles 缓存）"""
+        try:
+            if self._is_content_empty():
+                self._tk_text.config(selectbackground=self._styles.normal.bg)
+            else:
+                self._tk_text.config(selectbackground=self._styles.selected_font.bg)
+        except tk.TclError:
+            pass
+
     def _on_text_modified_internal(self, event):
         try:
             if self._tk_text.edit_modified():
@@ -496,6 +516,7 @@ class Text(View):
                 content = self._tk_text.get('1.0', 'end-1c')
                 self.on_text_changed.broadcast(content)
                 self._update_scrollbar_state()
+                self._update_select_color()
         except tk.TclError:
             pass
 
@@ -525,6 +546,13 @@ class Text(View):
                 return "break"
         previous = self._interaction_state
         self._interaction_state = TextInteractionState.Focus
+        # Label 模式：有焦点且可选时显示边框装饰
+        if self._text_mode == TextMode.Label and self._selectable:
+            self._show_frame_decoration = True
+            if hasattr(self, '_last_style_key'):
+                del self._last_style_key
+            if hasattr(self, '_last_struct_key'):
+                del self._last_struct_key
         if self._interaction_state != previous:
             self._update_styles()
         if self._tk_frame.focus_get() != self._tk_text:
@@ -540,6 +568,13 @@ class Text(View):
     def _check_focus_loss(self):
         if self._has_focus():
             return
+        # Label 模式：失去焦点时关闭边框装饰
+        if self._text_mode == TextMode.Label and self._show_frame_decoration:
+            self._show_frame_decoration = False
+            if hasattr(self, '_last_style_key'):
+                del self._last_style_key
+            if hasattr(self, '_last_struct_key'):
+                del self._last_struct_key
         if self._text_mode != TextMode.Disable:
             previous = self._interaction_state
             self._interaction_state = TextInteractionState.Idle
@@ -703,6 +738,10 @@ class Text(View):
         self._on_press_event.broadcast(event)
 
         if event.widget == self._tk_frame_b:
+            text_x, text_y = self._text_rel_xy(event)
+            text_w = self._tk_text.winfo_width()
+            text_h = self._tk_text.winfo_height()
+
             # Label 模式内容未超出时，不主动 focus_set()，但放行原生选区拖拽
             if self._text_mode == TextMode.Label and not self._content_exceeds_view():
                 if not self._selectable:
@@ -710,8 +749,12 @@ class Text(View):
                 # selectable=True 时继续执行，但不调用 focus_set()
             else:
                 self.focus_set()
-            text_x, text_y = self._text_rel_xy(event)
-            text_y = max(0, min(text_y, self._tk_text.winfo_height() - 1))
+
+            # 如果点击在 _tk_text 之外的 padding 区域，只清除选区，不设置 insert 光标
+            if not (0 <= text_x < text_w and 0 <= text_y < text_h):
+                self._clear_selection()
+                return
+
             if self._text_mode in (TextMode.Normal, TextMode.Readonly, TextMode.Display) or (self._text_mode == TextMode.Label and self._selectable):
                 try:
                     idx = self._tk_text.index(f'@{text_x},{text_y}')
@@ -912,9 +955,53 @@ class Text(View):
                 pass
         self._internal_bind_ids.clear()
 
+    def _bind_global_click(self):
+        """绑定全局点击事件：当点击组件外部时清除选区（参考 entry.py）"""
+        if not self._is_global_click_bound:
+            self._global_click_id = self._tk_frame.bind_all('<Button-1>', self._on_global_click, add='+')
+            self._is_global_click_bound = True
+
+    def _unbind_global_click(self):
+        """解绑全局点击事件"""
+        if self._is_global_click_bound:
+            try:
+                if self._global_click_id:
+                    self._tk_frame.unbind_all('<Button-1>', funcid=self._global_click_id)
+                    self._global_click_id = None
+            except:
+                pass
+            self._is_global_click_bound = False
+
+    def _update_global_click_binding(self):
+        """根据当前模式和可选择状态决定是否绑定全局点击事件
+        只有当组件可能产生选区时才需要监听全局点击"""
+        if self._text_mode == TextMode.Disable or not self._selectable:
+            self._unbind_global_click()
+        else:
+            self._bind_global_click()
+
+    def _on_global_click(self, event):
+        """全局点击回调：点击组件外部时清除选区"""
+        try:
+            if not self._tk_frame.winfo_exists():
+                return
+            # 不处理自身组件内的点击
+            if event.widget in (self._tk_frame, self._tk_text, self._tk_frame_b):
+                return
+            # 检查是否有选区，有则清除
+            try:
+                sel_ranges = self._tk_text.tag_ranges('sel')
+                if sel_ranges:
+                    self._clear_selection()
+            except Exception:
+                pass
+        except tk.TclError:
+            pass
+
     def _on_destroy(self):
         self._unregister_listeners()
         self._unbind_internal_events()
+        self._unbind_global_click()
         if self._scrollbar:
             self._scrollbar.destroy()
         super()._on_destroy()
@@ -949,6 +1036,7 @@ class Text(View):
             if self._has_focus():
                 self._deflect_focus()
 
+        self._update_global_click_binding()
         self.refresh()
 
     def set_disabled(self, disabled):
@@ -958,6 +1046,13 @@ class Text(View):
         self._selectable = bool(selectable)
         if not selectable:
             self._clear_selection()
+        # Label 模式：selectable 关闭时关闭边框装饰，selectable 打开且有焦点时开启
+        if self._text_mode == TextMode.Label:
+            if selectable and self._has_focus():
+                self._show_frame_decoration = True
+            else:
+                self._show_frame_decoration = False
+        self._update_global_click_binding()
         if self._text_mode in (TextMode.Label, TextMode.Display):
             self.refresh()
 
