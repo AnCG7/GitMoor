@@ -304,19 +304,22 @@ class Text(View):
             style = self._styles.disable
         elif self._text_mode == TextMode.Display:
             # Display 模式可选择时必须为 normal 状态，否则 Tkinter 无法渲染选区
-            if self._selectable:
+            if self._selectable and not self._is_content_empty():
                 cursor, tk_state = 'xterm', 'normal'
             else:
                 cursor, tk_state = 'arrow', 'disabled'
             style = self._styles.normal
         elif self._text_mode == TextMode.Label:
-            if self._selectable:
+            if self._selectable and not self._is_content_empty():
                 cursor, tk_state = 'xterm', 'normal'  # 保持 normal 以托管丝滑选择
             else:
                 cursor, tk_state = 'arrow', 'disabled'
             style = self._styles.normal
         elif self._text_mode == TextMode.Readonly:
-            cursor, tk_state = 'xterm', 'normal'  # 核心改动：保持 normal 状态以托管原生优雅选区
+            if self._is_content_empty():
+                cursor = 'arrow'
+            else:
+                cursor, tk_state = 'xterm', 'normal'  # 核心改动：保持 normal 状态以托管原生优雅选区
             if self._interaction_state == TextInteractionState.Focus:
                 style = self._styles.focus
             elif self._interaction_state == TextInteractionState.Hover:
@@ -540,7 +543,11 @@ class Text(View):
                 self._tk_frame.after_idle(self._deflect_focus)
                 return "break"
         if self._text_mode == TextMode.Label:
-            # 可选时需要保留内核焦点以渲染选区，不可选 + 内容未超出时才转移
+            # 无内容时一律拒绝焦点
+            if self._is_content_empty():
+                self._tk_frame.after_idle(self._deflect_focus)
+                return "break"
+            # 不可选 + 内容未超出时转移焦点
             if not self._selectable and not self._content_exceeds_view():
                 self._tk_frame.after_idle(self._deflect_focus)
                 return "break"
@@ -724,6 +731,9 @@ class Text(View):
             if not self._selectable:
                 return 'break'
         if self._text_mode == TextMode.Label:
+            # 无内容时完全截断点击
+            if self._is_content_empty():
+                return 'break'
             # 内容未超出 + 不可选 → 彻底截断；可选时放行以允许鼠标拖选区
             if not self._content_exceeds_view() and not self._selectable:
                 return 'break'
@@ -753,6 +763,16 @@ class Text(View):
             # 如果点击在 _tk_text 之外的 padding 区域，只清除选区，不设置 insert 光标
             if not (0 <= text_x < text_w and 0 <= text_y < text_h):
                 self._clear_selection()
+                # Label 模式内容未超出时，点击空白取消选中、关闭装饰、转移焦点
+                if self._text_mode == TextMode.Label and not self._content_exceeds_view():
+                    self._show_frame_decoration = False
+                    if hasattr(self, '_last_style_key'):
+                        del self._last_style_key
+                    if hasattr(self, '_last_struct_key'):
+                        del self._last_struct_key
+                    self._interaction_state = TextInteractionState.Idle
+                    self._update_styles()
+                    self._deflect_focus()
                 return
 
             if self._text_mode in (TextMode.Normal, TextMode.Readonly, TextMode.Display) or (self._text_mode == TextMode.Label and self._selectable):
