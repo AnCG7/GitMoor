@@ -102,10 +102,10 @@ class PlatformInputBind:
         if PlatformInfo.is_linux():
             # Linux: Button-4 向上, Button-5 向下
             def _on_button4(event, cb=callback):
-                cb(event, 1)
+                return cb(event, 1)
 
             def _on_button5(event, cb=callback):
-                cb(event, -1)
+                return cb(event, -1)
 
             bid4 = widget.bind('<Button-4>', _on_button4, add=add)
             bind_ids.append((widget, '<Button-4>', bid4))
@@ -121,7 +121,7 @@ class PlatformInputBind:
                 else:
                     # macOS: event.delta 为 ±1 (或更大的整数)
                     delta = 1 if event.delta > 0 else -1
-                cb(event, delta)
+                return cb(event, delta)
 
             bid = widget.bind('<MouseWheel>', _on_mousewheel, add=add)
             bind_ids.append((widget, '<MouseWheel>', bid))

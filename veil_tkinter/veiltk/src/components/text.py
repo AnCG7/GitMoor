@@ -228,7 +228,9 @@ class Text(View):
         for write_event in ('<<Paste>>', '<<Cut>>', '<<Clear>>', '<<Undo>>', '<<Redo>>', '<<PasteSelection>>'):
             self._internal_bind_ids.append((self._tk_text, write_event, self._tk_text.bind(write_event, self._block_modify_events, add='+')))
 
+        # 同时对内边距容器和文本内核绑定滚轮事件，实现全区域滚动响应，并彻底防住原生穿透
         self._internal_bind_ids.extend(PlatformInputBind.bind_mousewheel(self._tk_frame_b, self._on_mouse_wheel))
+        self._internal_bind_ids.extend(PlatformInputBind.bind_mousewheel(self._tk_text, self._on_mouse_wheel))
         self._add_parent_to_bindtags(self._tk_text, self._tk_frame_b)
 
         self._internal_bind_ids.append((self._scrollbar._tk_canvas, '<Enter>', self._scrollbar._tk_canvas.bind('<Enter>', self._on_scrollbar_enter, add='+')))
@@ -423,20 +425,32 @@ class Text(View):
     def _on_mouse_wheel(self, event, delta):
         if not self._mouse_inside:
             return
+
+        # 核心修复 1：当处于禁用模式时，彻底封死滚轮，截断底层原生滚动
         if self._text_mode == TextMode.Disable:
             return 'break'
+
         try:
             yview = self._tk_text.yview()
             if len(yview) != 2:
                 return
+
+            # 判断内容是否超出可视区域
             content_exceeds = not (yview[0] <= 0.001 and yview[1] >= 0.999)
+            
+            # 核心修复 2：如果内容没有超出可视区域，也必须吞掉滚轮事件
+            # 这样既能防止原生 tk.Text 在没内容时发生奇怪的底层抖动，也能避免外部嵌套的 Canvas/Scrollbar 发生误滚动
             if not content_exceeds:
-                return
+                return 'break'
+
             if self._text_mode not in (TextMode.Display, TextMode.Label):
                 self.focus_set()
+
+            # 无论是鼠标在文字上还是在 padding 内边距上，统一由此处的代码精确驱动滚动
             self._tk_text.yview_scroll(-1 * delta, 'units')
             self._on_scroll_event.broadcast(event)
-            return 'break'
+            
+            return 'break' # 拦截并阻断 Tkinter 默认事件的处理流程
         except tk.TclError:
             pass
 
@@ -1234,4 +1248,3 @@ class Text(View):
         frame_pady = self._pady
         # 总像素高度 = 行高 * 行数 + text内部pady*2 + frame_b的pady*2
         return line_height_px * int(lines) + text_pady * 2 + frame_pady * 2
-
