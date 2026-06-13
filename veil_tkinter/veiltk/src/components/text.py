@@ -1015,6 +1015,19 @@ class Text(View):
                     self._clear_selection()
             except Exception:
                 pass
+            # Label 模式：关闭边框装饰，内容未超出时额外转移焦点
+            if self._text_mode == TextMode.Label and self._show_frame_decoration:
+                self._show_frame_decoration = False
+                if hasattr(self, '_last_style_key'):
+                    del self._last_style_key
+                if hasattr(self, '_last_struct_key'):
+                    del self._last_struct_key
+                if not self._content_exceeds_view():
+                    self._interaction_state = TextInteractionState.Idle
+                    self._update_styles()
+                    self._deflect_focus()
+                else:
+                    self._update_styles()
         except tk.TclError:
             pass
 
@@ -1066,12 +1079,6 @@ class Text(View):
         self._selectable = bool(selectable)
         if not selectable:
             self._clear_selection()
-        # Label 模式：selectable 关闭时关闭边框装饰，selectable 打开且有焦点时开启
-        if self._text_mode == TextMode.Label:
-            if selectable and self._has_focus():
-                self._show_frame_decoration = True
-            else:
-                self._show_frame_decoration = False
         self._update_global_click_binding()
         if self._text_mode in (TextMode.Label, TextMode.Display):
             self.refresh()
