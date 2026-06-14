@@ -1,38 +1,5 @@
 import tkinter as tk
-
-
-class StringVar:
-    def __init__(self, value=None):
-        self._var = tk.StringVar(value=value)
-
-    def get(self):
-        return self._var.get()
-
-    def set(self, value):
-        self._var.set(value)
-
-    def trace_add(self, mode, callback):
-        self._var.trace_add(mode, callback)
-
-    def trace_remove(self, mode, cbname):
-        self._var.trace_remove(mode, cbname)
-
-
-class BooleanVar:
-    def __init__(self, value=None):
-        self._var = tk.BooleanVar(value=value)
-
-    def get(self):
-        return self._var.get()
-
-    def set(self, value):
-        self._var.set(value)
-
-    def trace_add(self, mode, callback):
-        self._var.trace_add(mode, callback)
-
-    def trace_remove(self, mode, cbname):
-        self._var.trace_remove(mode, cbname)
+import tkinter.font as tkfont
 
 
 class Utils:
@@ -197,3 +164,62 @@ class Utils:
         x = max(0, (parent_width - child_width) // 2)
         y = max(0, (parent_height - child_height) // 2)
         return x, y
+
+    @staticmethod
+    def is_content_overflow(text: str, available_width: int, available_height: int, min_font_size: int = 8) -> bool:
+        """使用最小字号快速预估文本是否会溢出指定容器区域。
+
+        原理：用最小字号（字号越小，同样高度能装的行越多）计算容器高度最多能容纳
+        多少个字符。如果待显示的内容字符数超过这个最大容量，说明内容肯定会溢出。
+        如果没超过，说明内容量在合理范围内，可以安全走真实布局测量。
+
+        Args:
+            text: 要显示的纯文本内容
+            available_width: 可用宽度（像素）
+            available_height: 可用高度（像素）
+            min_font_size: 用于估算的最小字号，默认 8
+
+        Returns:
+            True 表示内容大概率溢出，False 表示内容在可接受范围内
+        """
+        if not text:
+            return False
+
+        # 使用最小字号构建临时字体对象进行度量
+        temp_font = tkfont.Font(family="TkDefaultFont", size=min_font_size)
+        line_height = temp_font.metrics('linespace')
+
+        if line_height <= 0:
+            return False
+
+        # 该高度下最多能容纳的行数
+        max_lines = available_height // line_height
+        if max_lines <= 0:
+            return True
+
+        # 用最小字号下单个字符的平均宽度估算每行能放多少字符
+        # 使用 "M"（最宽的拉丁字符）和 "中"（代表 CJK 字符）取较小值，让估算更宽松
+        char_width_m = temp_font.measure("M")
+        char_width_cjk = temp_font.measure("中")
+        avg_char_width = min(char_width_m, char_width_cjk)
+
+        if avg_char_width <= 0:
+            return False
+
+        # 每行最多字符数
+        chars_per_line = available_width // avg_char_width
+
+        if chars_per_line <= 0:
+            return True
+
+        # 该区域用最小字号最多能容纳的总字符数
+        max_capacity = max_lines * chars_per_line
+
+        # 内容的实际字符数（去除末尾换行）
+        content_length = len(text.rstrip('\n'))
+
+        # 换行符会额外占用行，保守估算每个换行浪费半行容量
+        newline_count = text.count('\n')
+        effective_length = content_length + newline_count * (chars_per_line // 2)
+
+        return effective_length > max_capacity

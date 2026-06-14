@@ -76,54 +76,74 @@ class Alert(Window):
         # 基于宽度定制扁平化最大高度（360 * 0.72 ≈ 260px），视觉紧凑精致
         max_height = int(self._width * 0.72)
 
-        # === 1. 临时 pack 获取准确行数 ===
-        # 必须 pack 后才能让 Tk 几何管理器分配像素宽度，否则 displaylines 返回错误值
-        self._content_text.pack(side='top', fill='x', pady=(8, 0))
-        self._tk_window.update_idletasks()
-
-        # 通过真实渲染测量获取内容所需像素高度（布局已在上方 update_idletasks 完成）
-        content_req_h = self._content_text.get_rendered_content_height()
-
-        # 测算完毕，解包
-        self._content_text.pack_forget()
-
-        # === 2. 计算总高度，判断是否溢出 ===
+        # === 0. 计算固定区域高度 ===
         title_h = self._title_label.get_root_tk().winfo_reqheight()
         btn_h = self._button_frame.get_root_tk().winfo_reqheight()
-        # fixed_h: container pady=16*2 + btn_pady=12 + content_pady=8
+        # fixed_h: container pady=16*2 + btn_pady=8 + content_pady=8
         fixed_h = 32 + 8 + 8 + title_h + btn_h
-        total_req_height = fixed_h + content_req_h + 2  # +2 补偿窗口边框
+        available_content_h = max_height - fixed_h
+
+        # === 1. 快速预估：用最小字号判断内容是否明显超长 ===
+        # 可用文本宽度 = Alert 宽度 - container padx*2(12*2) - highlightthickness*2(1*2)
+        text_area_width = self._width - 24 - 2
+        content_str = self._content.get_text() if self._content else ""
+
+        is_definitely_overflow = Utils.is_content_overflow(
+            text=content_str,
+            available_width=text_area_width,
+            available_height=available_content_h,
+        )
 
         # 重置布局
         self._top_spacer.get_root_tk().pack_forget()
         self._bottom_spacer.get_root_tk().pack_forget()
         self._title_label.get_root_tk().pack_forget()
 
-        if total_req_height > max_height:
+        if is_definitely_overflow:
+            # === 快速路径：内容明显超长，直接走滚动模式，跳过真实测量 ===
             self._height = max_height
-            # 溢出：Always 滚动条，父级像素控制高度
             self._content_text.set_scrollbar_mode(ScrollbarMode.Always)
 
-            available_content_h = max_height - fixed_h
-            # 父级直接通过 View 公开接口控制布局
             self._content_text.pack_propagate(False)
             self._content_text.configure(height=available_content_h)
 
             self._title_label.pack(side='top', fill='x')
             self._content_text.pack(side='top', fill='both', expand=True, pady=(8, 0))
         else:
-            # 未溢出：在真实内容高度基础上多留一行默认行高余量，让末尾隐藏 \n 也可见
-            one_line_h = self._content_text.get_default_height_for_lines(1) - self._content_text._pady * 2
-            content_height = content_req_h + one_line_h
-            self._height = max(fixed_h + content_height + 2, 140)
-            self._content_text.set_scrollbar_mode(ScrollbarMode.Never)
-            self._content_text.pack_propagate(False)
-            self._content_text.configure(height=content_height)
+            # === 慢速路径：内容量可控，走真实测量获取精确高度 ===
+            # 临时 pack 获取真实渲染高度
+            self._content_text.pack(side='top', fill='x', pady=(8, 0))
+            self._tk_window.update_idletasks()
 
-            self._top_spacer.pack(side='top', fill='both', expand=True)
-            self._title_label.pack(side='top', fill='x')
-            self._content_text.pack(side='top', fill='x', expand=False, pady=(8, 0))
-            self._bottom_spacer.pack(side='top', fill='both', expand=True)
+            content_req_h = self._content_text.get_rendered_content_height()
+
+            # 测算完毕，解包
+            self._content_text.pack_forget()
+
+            total_req_height = fixed_h + content_req_h + 2  # +2 补偿窗口边框
+
+            if total_req_height > max_height:
+                self._height = max_height
+                self._content_text.set_scrollbar_mode(ScrollbarMode.Always)
+
+                self._content_text.pack_propagate(False)
+                self._content_text.configure(height=available_content_h)
+
+                self._title_label.pack(side='top', fill='x')
+                self._content_text.pack(side='top', fill='both', expand=True, pady=(8, 0))
+            else:
+                # 未溢出：在真实内容高度基础上多留一行默认行高余量
+                one_line_h = self._content_text.get_default_height_for_lines(1) - self._content_text._pady * 2
+                content_height = content_req_h + one_line_h
+                self._height = max(fixed_h + content_height + 2, 140)
+                self._content_text.set_scrollbar_mode(ScrollbarMode.Never)
+                self._content_text.pack_propagate(False)
+                self._content_text.configure(height=content_height)
+
+                self._top_spacer.pack(side='top', fill='both', expand=True)
+                self._title_label.pack(side='top', fill='x')
+                self._content_text.pack(side='top', fill='x', expand=False, pady=(8, 0))
+                self._bottom_spacer.pack(side='top', fill='both', expand=True)
 
         self._tk_window.update_idletasks()
         self._apply_content_alignment()

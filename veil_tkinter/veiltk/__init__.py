@@ -5,7 +5,7 @@ from .src.core.view import View
 from .src.core.manager.localization_manager import LocalizationManager, LocalizedText
 from .src.core.manager.ui_style_manager import UIStyleManager, StyleObject, Font, Style, StyleRoot
 from .src.core.manager.event_manager import Event
-from .src.core.utils.utils import Utils, StringVar, BooleanVar
+from .src.core.utils.utils import Utils
 from .src.core.utils.platform_info import PlatformInfo
 from .src.core.utils.platform_input_bind import PlatformInputBind
 from .src.components.alert import Alert
@@ -44,8 +44,6 @@ __all__ = [
     'Alert',
     'Event',
     'Utils',
-    'StringVar',
-    'BooleanVar',
     'LocalizationManager',
     'LocalizedText',
     'UIStyleManager',
