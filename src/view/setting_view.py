@@ -42,7 +42,7 @@ class SettingView(BaseView):
         self.git_check_text.grid(row=3, column=0, columnspan=3, sticky='ew', pady=self.default_pady, padx=self.default_padx)
         # 固定高度 2 行
         self.git_check_text.pack_propagate(False)
-        self.git_check_text.configure(height=self.git_check_text.get_height_for_lines(2))
+        self.git_check_text.configure(height=self.git_check_text.get_default_height_for_lines(2))
 
         self._register_vm_listener(self.setting_viewmodel.on_settings_updated, self.on_settings_updated)
 

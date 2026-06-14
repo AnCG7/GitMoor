@@ -522,10 +522,11 @@ class Text(View):
         finally:
             self._scrollbar_update_running = False
             self._scrollbar_update_pending = False
-            # 关键修复：更新结束后设置 "忽略下一次 Configure" 标记
-            # 因为 pack/pack_forget 引发的异步布局变化会产生一个 Configure 事件，
-            # 那个事件的尺寸变化仅仅是 scrollbar 自身占据/释放的宽度，不代表真正的外部尺寸变化
-            self._ignore_next_configure = True
+            # 只有当 _update_scrollbar_state 真正执行了布局操作时才忽略下一次 Configure
+            # 如果因为 _mapped=False 或 scrollbar 不存在而提前 return，不应设置此标记
+            # 否则会阻塞后续 Configure 事件中 _mapped=True 的设置
+            if self._mapped:
+                self._ignore_next_configure = True
 
     def _update_scrollbar_state(self, *args):
 
@@ -546,17 +547,33 @@ class Text(View):
             self._scrollbar_visible = True
             self._scrollbar_stable = True
         else:
-            self._prepare_scrollbar_measurement_layout()
-            try:
-                self._tk_frame.update_idletasks()
-                yview = self._tk_text.yview()
-                if len(yview) != 2:
-                    return
-                content_exceeds = not (yview[0] <= 0.001 and yview[1] >= 0.999)
-            except tk.TclError:
-                content_exceeds = False
+            # 如果 scrollbar 已经在布局中且可见，直接测量（避免隐藏→测量→显示导致闪烁）
+            if self._scrollbar_visible and self._is_scrollbar_in_layout():
+                # scrollbar 已占位，布局宽度已正确，直接判断
+                try:
+                    self._tk_frame.update_idletasks()
+                    yview = self._tk_text.yview()
+                    if len(yview) != 2:
+                        return
+                    content_exceeds = not (yview[0] <= 0.001 and yview[1] >= 0.999)
+                except tk.TclError:
+                    content_exceeds = False
+            else:
+                # scrollbar 不在布局中，需要先放入布局占位再测量
+                self._prepare_scrollbar_measurement_layout()
+                try:
+                    self._tk_frame.update_idletasks()
+                    yview = self._tk_text.yview()
+                    if len(yview) != 2:
+                        return
+                    content_exceeds = not (yview[0] <= 0.001 and yview[1] >= 0.999)
+                except tk.TclError:
+                    content_exceeds = False
 
             if content_exceeds:
+                if not self._scrollbar_visible:
+                    # 从不可见变为可见：确保在布局中并显示
+                    self._prepare_scrollbar_measurement_layout()
                 self._scrollbar.set_visual_hidden(False)
                 self._scrollbar_visible = True
                 self._scrollbar_stable = True
@@ -1234,6 +1251,8 @@ class Text(View):
 
     def tag_configure(self, tagName, **kwargs):
         self._tk_text.tag_configure(tagName, **kwargs)
+        # Tk 不会为 tag_configure 触发 yscrollcommand，需手动调度 scrollbar 检查
+        self._schedule_scrollbar_state_update()
 
     def tag_add(self, tagName, index1, index2=None):
         curr_state = self._tk_text.cget('state')
@@ -1243,6 +1262,8 @@ class Text(View):
             self._tk_text.config(state='disabled')
         else:
             self._tk_text.tag_add(tagName, index1, index2)
+        # Tk 不会为 tag_add 触发 yscrollcommand，需手动调度 scrollbar 检查
+        self._schedule_scrollbar_state_update()
 
     def tag_remove(self, tagName, index1, index2=None):
         curr_state = self._tk_text.cget('state')
@@ -1252,6 +1273,8 @@ class Text(View):
             self._tk_text.config(state='disabled')
         else:
             self._tk_text.tag_remove(tagName, index1, index2)
+        # tag 移除后行高可能变化
+        self._schedule_scrollbar_state_update()
 
     def tag_delete(self, tagName):
         curr_state = self._tk_text.cget('state')
@@ -1261,6 +1284,8 @@ class Text(View):
             self._tk_text.config(state='disabled')
         else:
             self._tk_text.tag_delete(tagName)
+        # tag 删除后行高可能变化
+        self._schedule_scrollbar_state_update()
 
     def tag_raise(self, tagName, aboveThis=None):
         self._tk_text.tag_raise(tagName, aboveThis)
@@ -1336,8 +1361,8 @@ class Text(View):
         except tk.TclError:
             return ""
 
-    def get_height_for_lines(self, lines):
-        """测量指定行数所需的像素高度（不改变组件状态，仅返回测量值）"""
+    def get_default_height_for_lines(self, lines):
+        """基于默认字体估算指定行数所需的像素高度（不考虑 tag 字体差异，纯预分配用途）"""
         if not self._tk_text:
             return 0
         import tkinter.font as tkfont
@@ -1348,3 +1373,49 @@ class Text(View):
         frame_pady = self._pady
         # 总像素高度 = 行高 * 行数 + text内部pady*2 + frame_b的pady*2
         return line_height_px * int(lines) + text_pady * 2 + frame_pady * 2
+
+    def get_rendered_content_height(self, force_update=False):
+        """
+        获取内容实际渲染所需的像素高度（基于 Tk 真实布局信息）。
+
+        需要 widget 已经 pack 并完成布局后调用。
+        考虑因素：自动换行、tag 字体大小差异、Text 内部 pady、外层 frame pady。
+
+        Args:
+            force_update: 是否在测量前强制调用 update_idletasks() 刷新布局。
+                          默认 False，由调用方自行决定是否需要刷新。
+        """
+        if not self._tk_text:
+            return 0
+
+        if force_update:
+            self._tk_frame.update_idletasks()
+
+        frame_pady = self._pady
+        text_pady = int(self._tk_text.cget('pady'))
+
+        # 首选：count ypixels（最简洁准确）
+        try:
+            result = self._tk_text.count('1.0', 'end-1c', 'ypixels')
+            if result is not None:
+                pixels = result[0] if isinstance(result, tuple) else result
+                if pixels and pixels > 0:
+                    # ypixels 返回从第一行顶部到最后一行顶部的距离，需加上最后一行高度
+                    last_info = self._tk_text.dlineinfo('end-1c')
+                    last_line_h = last_info[3] if last_info else 0
+                    return pixels + last_line_h + text_pady * 2 + frame_pady * 2
+        except (tk.TclError, TypeError):
+            pass
+
+        # 兜底：用 dlineinfo 取最后一行底部
+        try:
+            last_info = self._tk_text.dlineinfo('end-1c')
+            if last_info is not None:
+                _, y, _, h, _ = last_info
+                return y + h + text_pady + frame_pady * 2
+        except tk.TclError:
+            pass
+
+        # 最终兜底：退化为默认字体估算
+        line_count = self.get_line_count()
+        return self.get_default_height_for_lines(line_count)

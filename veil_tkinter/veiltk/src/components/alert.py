@@ -81,10 +81,8 @@ class Alert(Window):
         self._content_text.pack(side='top', fill='x', pady=(8, 0))
         self._tk_window.update_idletasks()
 
-        line_count = self._content_text.get_line_count()
-
-        # 通过测量 API 获取内容所需像素高度
-        content_req_h = self._content_text.get_height_for_lines(line_count)
+        # 通过真实渲染测量获取内容所需像素高度（布局已在上方 update_idletasks 完成）
+        content_req_h = self._content_text.get_rendered_content_height()
 
         # 测算完毕，解包
         self._content_text.pack_forget()
@@ -114,8 +112,9 @@ class Alert(Window):
             self._title_label.pack(side='top', fill='x')
             self._content_text.pack(side='top', fill='both', expand=True, pady=(8, 0))
         else:
-            # 未溢出：给 Text 多留一行像素高度，让末尾隐藏 \n 也可见，使 yview() 返回 (0,1)
-            content_height = self._content_text.get_height_for_lines(line_count + 1)
+            # 未溢出：在真实内容高度基础上多留一行默认行高余量，让末尾隐藏 \n 也可见
+            one_line_h = self._content_text.get_default_height_for_lines(1) - self._content_text._pady * 2
+            content_height = content_req_h + one_line_h
             self._height = max(fixed_h + content_height + 2, 140)
             self._content_text.set_scrollbar_mode(ScrollbarMode.Never)
             self._content_text.pack_propagate(False)
