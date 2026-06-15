@@ -89,32 +89,16 @@ btn.on_click.add_listener(lambda: print("按钮被点击"))
 
 ```
 veil_tkinter/
-├── examples/
-│   └── demo.py              # 演示程序
+├── examples/           # 演示程序
 ├── veiltk/
-│   ├── __init__.py           # 公开 API 导出
 │   ├── assets/
-│   │   └── images/theme/    # 主题图片资源
-│   ├── src/
-│   │   ├── core/
-│   │   │   ├── application.py    # App 单例
-│   │   │   ├── engine.py         # 引擎初始化
-│   │   │   ├── view.py           # 视图基类
-│   │   │   ├── window.py         # 窗口基类
-│   │   │   ├── manager/
-│   │   │   │   ├── event_manager.py         # 事件系统
-│   │   │   │   ├── localization_manager.py   # 国际化管理
-│   │   │   │   └── ui_style_manager.py       # 主题样式管理
-│   │   │   └── utils/
-│   │   │       ├── asset_loader.py
-│   │   │       └── utils.py
-│   │   └── components/      # 所有 UI 组件
-│   └── assets/
-│       ├── images/
-│       └── styles/
-│           ├── light.json        # 亮色主题
-│           ├── dark.json         # 暗色主题
-│           └── components.json   # 组件样式映射
+│   │   ├── images/     # 主题图片资源
+│   │   └── styles/     # 主题样式配置
+│   └── src/
+│       ├── core/
+│       │   ├── manager/   # 事件、本地化、样式管理
+│       │   └── utils/     # 工具函数
+│       └── components/    # 所有 UI 组件
 └── README.md
 ```
 

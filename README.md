@@ -51,7 +51,7 @@ GitMoor/
 ├── app_setting.json               # 默认配置（只读，打包进程序内部）
 ├── assets/                        # 运行时资源（打包后用户可直接修改）
 ├── src/                           # 应用源码
-├── veil_tkinter/                  # VeilTk — 自研 UI 组件库（详见下方说明）
+├── veil_tkinter/                  # VeilTk — 自制 UI 组件库（详见下方说明）
 ├── external_tools/                # 外部工具
 ├── dev/                           # 开发期资源（不参与打包分发）
 └── saved/                         # 用户运行时保存的数据，运行时自动创建
