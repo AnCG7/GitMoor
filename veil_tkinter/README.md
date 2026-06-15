@@ -67,7 +67,7 @@ vk.UIStyleManager.get_instance().set_theme('light')  # 切换到亮色
 通过 `LocalizedText` 包裹文本，组件会自动从 `localization/` 目录下的 JSON 文件加载对应语言：
 
 ```python
-vk.Label(self, text=vk.LocalizedText("hello"))
+vk.Label(master, text=vk.LocalizedText("hello"))
 ```
 
 切换语言后所有组件自动刷新：
