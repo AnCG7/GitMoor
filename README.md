@@ -18,7 +18,7 @@
 | Git | 2.0+ | 测试环境 Git 2.51 |
 | Git LFS | 2.10+（可选） | 测试环境 Git LFS 3.7 |
 
-> **不需要安装任何第三方 Python 包** — GUI 框架基于 Tkinter（Python 标准库），UI 组件库 [VeilTk](#关于-veiltk) 也是零外部依赖。
+> **不需要安装任何第三方 Python 包** — GUI 框架基于 Tkinter（Python 标准库），UI 组件库 [VeilTk](./veil_tkinter/README.md) 也是零外部依赖。
 
 ## 快速开始
 
